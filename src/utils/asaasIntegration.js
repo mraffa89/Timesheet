@@ -4,8 +4,8 @@
  */
 
 function getAsaasBaseUrl(env = 'sandbox') {
-  if (typeof window !== 'undefined') {
-    // No navegador (Vite Dev / Prod), utiliza o proxy configurado no Vite para evitar qualquer bloqueio de CORS
+  // Only use local proxy during Vite local development
+  if (typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '5174')) {
     return env === 'production' ? '/api/asaas-prod' : '/api/asaas-sandbox';
   }
   return env === 'production' 
@@ -17,8 +17,8 @@ function getAsaasBaseUrl(env = 'sandbox') {
  * Busca um cliente no Asaas pelo CNPJ ou CPF
  */
 export async function fetchAsaasCustomerByCnpj(cnpj) {
-  const token = localStorage.getItem('raffa_asaas_token');
-  const env = localStorage.getItem('raffa_asaas_env') || 'sandbox';
+  const token = (localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
 
   if (!token) {
     throw new Error('Chave de API do Asaas não configurada. Acesse Configurações para adicionar seu Token do Asaas.');
@@ -132,8 +132,8 @@ export async function fetchAsaasCustomerByCnpj(cnpj) {
  * Sincroniza todos os clientes cadastrados no Asaas, detectando assinaturas ativas e faturas futuras/pendentes
  */
 export async function syncAllAsaasClients() {
-  const token = localStorage.getItem('raffa_asaas_token');
-  const env = localStorage.getItem('raffa_asaas_env') || 'sandbox';
+  const token = (localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
 
   if (!token) {
     throw new Error('Chave de API do Asaas não configurada. Acesse Configurações para adicionar seu Token do Asaas.');
@@ -168,7 +168,13 @@ export async function syncAllAsaasClients() {
         throw new Error(`Erro ao consultar clientes no Asaas: ${errorMsg}`);
       }
 
-      const custData = await custRes.json();
+      const custText = await custRes.text();
+      let custData;
+      try {
+        custData = JSON.parse(custText);
+      } catch (e) {
+        throw new Error(`Resposta inválida do Asaas (Status ${custRes.status}). Verifique se sua chave de API e ambiente estão corretos.`);
+      }
       const batch = custData.data || [];
       allCustomers = allCustomers.concat(batch);
 

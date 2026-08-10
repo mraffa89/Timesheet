@@ -105,6 +105,7 @@ function App() {
   const [asaasToken, setAsaasToken] = useState(localStorage.getItem('raffa_asaas_token') || '');
   const [asaasEnv, setAsaasEnv] = useState(localStorage.getItem('raffa_asaas_env') || 'sandbox');
   const [asaasAutoNfe, setAsaasAutoNfe] = useState(() => localStorage.getItem('raffa_asaas_auto_nfe') !== 'false');
+  const [asaasTestStatus, setAsaasTestStatus] = useState(null);
 
   // Global Default Hourly Rate (Default: R$ 200)
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(() => localStorage.getItem('raffa_default_hourly_rate') || '200');
@@ -234,6 +235,39 @@ function App() {
       setIsOnline(true);
     } catch (err) {
       setSupabaseTestStatus({ type: 'error', text: `Erro ao conectar: ${err.message || 'Verifique suas credenciais e se rodou o script SQL no Supabase.'}` });
+    }
+  };
+
+  const handleSaveAsaasSettings = async () => {
+    if (!asaasToken.trim()) {
+      setAsaasTestStatus({ type: 'error', text: 'Por favor, informe a Chave de API (Token) do Asaas.' });
+      return;
+    }
+    localStorage.setItem('raffa_asaas_token', asaasToken.trim());
+    localStorage.setItem('raffa_asaas_env', asaasEnv);
+    localStorage.setItem('raffa_asaas_auto_nfe', asaasAutoNfe.toString());
+    
+    setAsaasTestStatus({ type: 'info', text: 'Testando conexão com a API do Asaas...' });
+    try {
+      const baseUrl = asaasEnv === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/v3';
+      const res = await fetch(`${baseUrl}/customers?limit=1`, {
+        method: 'GET',
+        headers: {
+          'access_token': asaasToken.trim(),
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) {
+        let errDesc = `Status ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.errors?.[0]?.description) errDesc = errData.errors[0].description;
+        } catch (e) {}
+        throw new Error(errDesc);
+      }
+      setAsaasTestStatus({ type: 'success', text: '✓ Token do Asaas salvo e validado com sucesso com a API!' });
+    } catch (err) {
+      setAsaasTestStatus({ type: 'error', text: `Token salvo, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave.` });
     }
   };
 
@@ -1068,6 +1102,29 @@ function App() {
                     <label htmlFor="asaas-auto-nfe" className="text-xs font-semibold text-gray-700 cursor-pointer">
                       Agendar emissão da Nota Fiscal (NFS-e) automaticamente ao receber o pagamento
                     </label>
+                  </div>
+
+                  {asaasTestStatus && (
+                    <div className={`p-3 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                      asaasTestStatus.type === 'success' 
+                        ? 'bg-yellow-50 text-yellow-900 border border-yellow-200' 
+                        : asaasTestStatus.type === 'info'
+                        ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                        : 'bg-red-50 text-red-800 border border-red-200'
+                    }`}>
+                      {asaasTestStatus.type === 'success' ? <CheckCircle2 size={16} className="text-yellow-600 shrink-0" /> : asaasTestStatus.type === 'info' ? <RefreshCw size={16} className="animate-spin text-blue-600 shrink-0" /> : <AlertTriangle size={16} className="text-red-600 shrink-0" />}
+                      <span>{asaasTestStatus.text}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={handleSaveAsaasSettings}
+                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-950 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Save size={14} /> Salvar & Validar Integração Asaas
+                    </button>
                   </div>
                   
                   <div className="bg-gray-50 border border-gray-100 p-4 rounded-lg text-xs text-gray-500 leading-relaxed flex flex-col gap-2">
