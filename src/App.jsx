@@ -700,24 +700,30 @@ function App() {
               onUpdateClient={handleUpdateClient}
               onDeleteClient={handleDeleteClient}
               onSyncClients={async (syncedList) => {
-                setClients(syncedList);
-                saveClients(syncedList);
-                if (isOnline) {
-                  try {
-                    for (const c of syncedList) {
-                      if (clients.some(existing => existing.id === c.id)) {
-                        await updateClientDb(c.id, c);
-                      } else {
-                        await createClientDb(c);
-                      }
+                if (!isOnline) {
+                  setClients(syncedList);
+                  saveClients(syncedList);
+                  return;
+                }
+                
+                try {
+                  const dbUpdatedClients = [];
+                  for (const c of syncedList) {
+                    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id);
+                    
+                    if (clients.some(existing => existing.id === c.id) && isValidUuid) {
+                      const updated = await updateClientDb(c.id, c);
+                      dbUpdatedClients.push(updated);
+                    } else {
+                      const added = await addClientDb(c);
+                      dbUpdatedClients.push(added);
                     }
-                    const refreshed = await getClientsDb();
-                    if (refreshed && refreshed.length > 0) {
-                      setClients(refreshed);
-                    }
-                  } catch (e) {
-                    console.error("Erro ao sincronizar clientes no Supabase:", e);
                   }
+                  setClients(dbUpdatedClients);
+                  saveClients(dbUpdatedClients);
+                } catch (err) {
+                  console.error(err);
+                  alert("Erro ao sincronizar com Supabase: " + err.message);
                 }
               }}
             />
