@@ -16,7 +16,9 @@ import {
   Save,
   Mail,
   CheckCircle2,
-  DollarSign
+  DollarSign,
+  LogOut,
+  Key
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ClientManager from './components/ClientManager';
@@ -24,6 +26,7 @@ import TimesheetTable from './components/TimesheetTable';
 import InvoiceView from './components/InvoiceView';
 import ImportModal from './components/ImportModal';
 import ConfirmModal from './components/ConfirmModal';
+import LoginScreen from './components/LoginScreen';
 
 import { defaultClients, defaultEntries } from './data/seedData';
 
@@ -81,6 +84,19 @@ Atenciosamente,
 {meu_telefone} | {meu_email}`;
 
 function App() {
+  const [userSession, setUserSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem('raffa_session_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [authEmailForm, setAuthEmailForm] = useState(() => localStorage.getItem('raffa_auth_email') || 'contato@matheusraffa.com.br');
+  const [authPassForm, setAuthPassForm] = useState(() => localStorage.getItem('raffa_auth_pass') || 'admin123');
+  const [authSuccessMessage, setAuthSuccessMessage] = useState(false);
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [clients, setClients] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -219,6 +235,19 @@ function App() {
     } catch (err) {
       setSupabaseTestStatus({ type: 'error', text: `Erro ao conectar: ${err.message || 'Verifique suas credenciais e se rodou o script SQL no Supabase.'}` });
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('raffa_session_user');
+    setUserSession(null);
+  };
+
+  const handleSaveAuthCredentials = (e) => {
+    e.preventDefault();
+    localStorage.setItem('raffa_auth_email', authEmailForm.trim());
+    localStorage.setItem('raffa_auth_pass', authPassForm.trim());
+    setAuthSuccessMessage(true);
+    setTimeout(() => setAuthSuccessMessage(false), 3000);
   };
 
   const handleResetSystem = async () => {
@@ -525,6 +554,10 @@ function App() {
     );
   }
 
+  if (!userSession) {
+    return <LoginScreen onLogin={(user) => setUserSession(user)} companyInfo={companyInfo} />;
+  }
+
   return (
     <div className="flex w-full min-h-screen bg-gray-50 font-sans text-gray-800">
       
@@ -619,47 +652,32 @@ function App() {
           </li>
         </ul>
 
-        {/* Footer Database Tools */}
-        <div className="flex flex-col gap-2 pt-4 border-t border-gray-100">
+        {/* Footer Sidebar (Clean: Primary Import & User Session Logout) */}
+        <div className="flex flex-col gap-2.5 pt-4 border-t border-gray-100 mt-auto">
           <button 
-            className="flex items-center justify-center gap-2 w-full py-2 bg-gray-950 text-white rounded-lg text-xs font-semibold hover:bg-gray-800 transition-colors shadow-sm cursor-pointer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 bg-gray-950 text-white rounded-lg text-xs font-bold hover:bg-gray-800 transition-colors shadow-sm cursor-pointer"
             onClick={() => setIsImportModalOpen(true)}
           >
-            <Upload size={13} /> Importar Planyway
+            <Upload size={14} /> Importar Planyway
           </button>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center justify-between bg-gray-50 border border-gray-150 p-2.5 rounded-lg text-xs mt-1">
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-gray-900 truncate text-[11px]">{userSession?.email || 'Administrador'}</span>
+              <span className="text-[10px] text-gray-500">Sessão Ativa</span>
+            </div>
             <button 
-              className="flex items-center justify-center gap-1.5 py-1.5 border border-gray-200 rounded-lg text-[11px] font-semibold text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all cursor-pointer"
-              onClick={handleExportBackup}
-              title="Baixar backup completo"
+              onClick={handleLogout}
+              className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-md transition-colors cursor-pointer"
+              title="Sair do Sistema"
             >
-              <Download size={11} /> Backup
-            </button>
-            <button 
-              className="relative flex items-center justify-center gap-1.5 py-1.5 border border-gray-200 rounded-lg text-[11px] font-semibold text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all cursor-pointer"
-              title="Restaurar backup"
-            >
-              <Download size={11} className="rotate-180" /> Subir
-              <input 
-                type="file" 
-                accept=".json" 
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                onChange={handleImportBackup}
-              />
+              <LogOut size={14} />
             </button>
           </div>
 
-          <button 
-            className="flex items-center justify-center gap-1 w-full py-1 border border-dashed border-gray-200 rounded-lg text-[10px] text-gray-400 hover:border-amber-300 hover:text-amber-600 transition-all cursor-pointer"
-            onClick={handleResetDatabase}
-          >
-            <RefreshCw size={10} /> Resetar Demonstração
-          </button>
-          
-          <div className="flex items-center justify-center gap-1 text-[10px] text-gray-400 mt-2">
+          <div className="flex items-center justify-center gap-1 text-[10px] text-gray-400 mt-1">
             <Server size={10} />
-            <span>Versão 1.0.3</span>
+            <span>Versão 1.0.0 Online</span>
           </div>
         </div>
       </nav>
@@ -864,6 +882,64 @@ function App() {
                         className="px-6 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-gray-950 font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
                       >
                         <Save size={14} /> Salvar Configurações Gerais
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Access Control & Password Settings Card */}
+                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col gap-4 md:col-span-2">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Key size={18} className="text-yellow-600" />
+                      <h3 className="font-title text-base font-bold text-gray-900">Credenciais de Acesso (Login de Usuário)</h3>
+                    </div>
+                    {authSuccessMessage && (
+                      <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-200">
+                        ✓ Credenciais de login salvas com sucesso!
+                      </span>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSaveAuthCredentials} className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-semibold text-gray-700" htmlFor="auth-email">E-mail de Login do Administrador</label>
+                      <input 
+                        id="auth-email"
+                        type="email" 
+                        className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white"
+                        value={authEmailForm}
+                        onChange={(e) => setAuthEmailForm(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="font-semibold text-gray-700" htmlFor="auth-pass">Senha de Acesso ao Sistema</label>
+                      <input 
+                        id="auth-pass"
+                        type="password" 
+                        className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white"
+                        value={authPassForm}
+                        onChange={(e) => setAuthPassForm(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between sm:col-span-2 pt-2 border-t border-gray-100">
+                      <button 
+                        type="submit"
+                        className="px-6 py-2 bg-gray-900 hover:bg-black text-white font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
+                      >
+                        <Save size={14} /> Salvar Nova Senha de Acesso
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <LogOut size={13} /> Sair da Conta Agora
                       </button>
                     </div>
                   </form>
