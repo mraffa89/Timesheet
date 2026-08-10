@@ -1,33 +1,43 @@
-# Stage 1: Build stage
-FROM node:20-alpine AS build
+# Stage 1: Build
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependency manifests
-COPY package.json package-lock.json ./
+# Copy dependency definitions
+COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (safe for multi-architecture)
+RUN npm install
 
-# Copy source files
+# Copy source code
 COPY . .
 
 # Build production bundle
 RUN npm run build
 
-# Stage 2: Production web server stage
-FROM nginx:alpine AS production
+# Stage 2: Production Web Server
+FROM nginx:alpine
 
-# Copy custom Nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Clean default Nginx html files
+RUN rm -rf /usr/share/nginx/html/*
 
-# Copy compiled static assets from build stage
-COPY --from=build /app/dist /usr/share/nginx/html
+# Copy built frontend assets
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Write optimized SPA Nginx configuration directly
+RUN printf 'server {\n\
+    listen 80;\n\
+    server_name _;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
 
 # Grant read permissions
 RUN chmod -R 755 /usr/share/nginx/html
 
-# Expose HTTP port
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
