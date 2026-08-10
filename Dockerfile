@@ -6,7 +6,7 @@ WORKDIR /app
 # Copy dependency definitions
 COPY package*.json ./
 
-# Install dependencies (safe for multi-architecture)
+# Install dependencies
 RUN npm install
 
 # Copy source code
@@ -24,9 +24,11 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy built frontend assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Write optimized SPA Nginx configuration directly
+# Write Nginx configuration listening on ports 80, 3000, and 8080 to match any Easypanel port mapping
 RUN printf 'server {\n\
     listen 80;\n\
+    listen 3000;\n\
+    listen 8080;\n\
     server_name _;\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
@@ -38,6 +40,6 @@ RUN printf 'server {\n\
 # Grant read permissions
 RUN chmod -R 755 /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 80 3000 8080
 
 CMD ["nginx", "-g", "daemon off;"]
