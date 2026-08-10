@@ -21,4 +21,4 @@ RUN npm install -g serve
 EXPOSE 3000
 
 # Start static server on port 3000 with SPA routing (-s)
-CMD ["serve", "-s", "dist", "-l", "3000"]
+CMD ["npx", "serve", "-s", "dist", "-l", "3000"]
