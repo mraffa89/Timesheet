@@ -18,11 +18,14 @@ RUN npm run build
 # Stage 2: Production web server stage
 FROM nginx:alpine AS production
 
-# Copy custom Nginx configuration for Vite SPA support
+# Copy custom Nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy compiled static assets from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# Grant read permissions
+RUN chmod -R 755 /usr/share/nginx/html
 
 # Expose HTTP port
 EXPOSE 80
