@@ -4,13 +4,9 @@
  */
 
 function getAsaasBaseUrl(env = 'sandbox') {
-  // Only use local proxy during Vite local development
-  if (typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '5174')) {
-    return env === 'production' ? '/api/asaas-prod' : '/api/asaas-sandbox';
-  }
-  return env === 'production' 
-    ? 'https://api.asaas.com/v3' 
-    : 'https://sandbox.asaas.com/v3';
+  // Sempre usa o proxy reverso do Nginx (em dev ou prod) para evitar bloqueio de CORS do navegador.
+  // O Nginx (ou Vite em dev) intercepta /api/asaas-... e repassa para a API real do Asaas com SSL e Headers adequados.
+  return env === 'production' ? '/api/asaas-prod' : '/api/asaas-sandbox';
 }
 
 /**

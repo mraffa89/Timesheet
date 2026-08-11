@@ -1,24 +1,20 @@
-FROM node:20-alpine
-
+# Stage 1: Build stage
+FROM node:20-alpine AS build
 WORKDIR /app
-
-# Copy dependency files
 COPY package*.json ./
-
-# Install all dependencies
 RUN npm install
-
-# Copy source code
 COPY . .
-
-# Build Vite SPA production bundle
 RUN npm run build
 
-# Install serve globally for reliable static hosting
-RUN npm install -g serve
+# Stage 2: Production Nginx Server
+FROM nginx:alpine
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy built static assets
+COPY --from=build /app/dist /usr/share/nginx/html
 
-# Expose default Easypanel port
+# Expose port 3000 to match Easypanel default and nginx.conf
 EXPOSE 3000
 
-# Start static server on port 3000 with SPA routing (-s)
-CMD ["npx", "serve", "-s", "dist", "-l", "3000"]
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
