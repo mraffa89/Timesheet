@@ -46,6 +46,7 @@ import {
   addEntriesBulkDb,
   getSupabaseInstance
 } from './lib/supabase';
+import { testAsaasConnection } from './utils/asaasIntegration';
 
 const defaultCompanyProfile = {
   brandName: 'Matheus Raffa',
@@ -247,27 +248,12 @@ function App() {
     localStorage.setItem('raffa_asaas_env', asaasEnv);
     localStorage.setItem('raffa_asaas_auto_nfe', asaasAutoNfe.toString());
     
-    setAsaasTestStatus({ type: 'info', text: 'Testando conexão com a API do Asaas...' });
+    setAsaasTestStatus({ type: 'info', text: 'Testando conexão através do túnel proxy com a API do Asaas...' });
     try {
-      const baseUrl = asaasEnv === 'production' ? 'https://api.asaas.com/v3' : 'https://sandbox.asaas.com/v3';
-      const res = await fetch(`${baseUrl}/customers?limit=1`, {
-        method: 'GET',
-        headers: {
-          'access_token': asaasToken.trim(),
-          'Content-Type': 'application/json'
-        }
-      });
-      if (!res.ok) {
-        let errDesc = `Status ${res.status}`;
-        try {
-          const errData = await res.json();
-          if (errData.errors?.[0]?.description) errDesc = errData.errors[0].description;
-        } catch (e) {}
-        throw new Error(errDesc);
-      }
+      await testAsaasConnection(asaasToken.trim(), asaasEnv);
       setAsaasTestStatus({ type: 'success', text: '✓ Token do Asaas salvo e validado com sucesso com a API!' });
     } catch (err) {
-      setAsaasTestStatus({ type: 'error', text: `Token salvo, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave.` });
+      setAsaasTestStatus({ type: 'error', text: `Token salvo, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave informada.` });
     }
   };
 

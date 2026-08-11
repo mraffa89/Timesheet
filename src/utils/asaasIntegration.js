@@ -3,10 +3,54 @@
  * Documentação oficial: https://docs.asaas.com/reference/comece-por-aqui
  */
 
-function getAsaasBaseUrl(env = 'sandbox') {
+export function getAsaasBaseUrl(env = 'sandbox') {
   // Sempre usa o proxy reverso do Nginx (em dev ou prod) para evitar bloqueio de CORS do navegador.
-  // O Nginx (ou Vite em dev) intercepta /api/asaas-... e repassa para a API real do Asaas com SSL e Headers adequados.
   return env === 'production' ? '/api/asaas-prod' : '/api/asaas-sandbox';
+}
+
+/**
+ * Testa a conexão com a API do Asaas
+ */
+export async function testAsaasConnection(tokenParam, envParam) {
+  const token = (tokenParam || localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (envParam || localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
+
+  if (!token) {
+    throw new Error('Chave de API do Asaas não configurada.');
+  }
+
+  const baseUrl = getAsaasBaseUrl(env);
+
+  try {
+    const response = await fetch(`${baseUrl}/customers?limit=1`, {
+      method: 'GET',
+      headers: {
+        'access_token': token,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Status ${response.status}: ${response.statusText}`;
+      try {
+        const errData = await response.json();
+        if (errData.errors && errData.errors.length > 0) {
+          errorMsg = errData.errors.map(e => e.description).join(', ');
+        }
+      } catch (e) {}
+
+      if (response.status === 401) {
+        throw new Error('Chave de API do Asaas inválida ou não autorizada. Verifique se a chave é válida e se o ambiente selecionado (Produção ou Sandbox) está correto.');
+      }
+      throw new Error(errorMsg);
+    }
+
+    const data = await response.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error('Erro no teste de conexão com o Asaas:', error);
+    throw error;
+  }
 }
 
 /**
