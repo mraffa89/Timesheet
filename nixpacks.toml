@@ -1,8 +1,0 @@
-[providers]
-providers = ["node"]
-
-[phases.build]
-cmds = ["npm run build"]
-
-[start]
-cmd = "npx serve -s dist -l 80"
