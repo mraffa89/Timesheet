@@ -215,18 +215,29 @@ export default function Dashboard({ entries, clients, onNavigateToTab }) {
 
   const getUniqueMonths = () => {
     const months = new Set();
-    const today = new Date();
-    months.add(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
-    
     entries.forEach(e => {
-      if (e.requestDate) {
-        const dateObj = new Date(e.requestDate + 'T00:00:00');
-        const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
-        months.add(monthKey);
+      const dateStr = e.deliveryDate || e.requestDate;
+      if (dateStr) {
+        const ym = getYearMonth(dateStr);
+        if (ym) {
+          months.add(ym);
+        }
       }
     });
     return Array.from(months).sort().reverse();
   };
+
+  // Sincroniza o mês selecionado exclusivamente com os meses presentes nos CSVs importados
+  useEffect(() => {
+    const available = getUniqueMonths();
+    if (available.length > 0) {
+      if (!selectedMonth || !available.includes(selectedMonth)) {
+        setSelectedMonth(available[0]);
+      }
+    } else {
+      setSelectedMonth('');
+    }
+  }, [entries]);
 
   const getMonthNamePT = (monthKey) => {
     if (!monthKey) return '';
@@ -269,13 +280,18 @@ export default function Dashboard({ entries, clients, onNavigateToTab }) {
         <div className="flex items-center gap-2 self-start sm:self-center">
           <Calendar size={16} className="text-gray-400" />
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
+            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
+            disabled={getUniqueMonths().length === 0}
           >
-            {getUniqueMonths().map(m => (
-              <option key={m} value={m}>{getMonthNamePT(m)}</option>
-            ))}
+            {getUniqueMonths().length === 0 ? (
+              <option value="">Nenhum mês de CSV</option>
+            ) : (
+              getUniqueMonths().map(m => (
+                <option key={m} value={m}>{getMonthNamePT(m)}</option>
+              ))
+            )}
           </select>
         </div>
       </div>

@@ -391,15 +391,44 @@ export async function createAsaasBilling(params = {}) {
   // Descrição do demonstrativo e fatura Asaas
   const description = `PRESTAÇÃO DE SERVIÇOS DE MARKETING - JOBS AVULSOS - ${monthYearFormatted}`;
   
-  // Vencimento: Dia 10 do mês seguinte à emissão (YYYY-MM-10)
-  const now = new Date();
-  let nextMonth = now.getMonth() + 2;
-  let nextYear = now.getFullYear();
-  if (nextMonth > 12) {
-    nextMonth = 1;
-    nextYear += 1;
+  // Vencimento: personalizável pelo usuário ou padrão dia 10 do próximo mês (YYYY-MM-10)
+  let dueDate = '';
+  if (params.dueDate) {
+    const rawDue = String(params.dueDate).trim();
+    if (rawDue.includes('/')) {
+      const parts = rawDue.split('/');
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          dueDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else if (parts[0].length === 4) {
+          dueDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+      }
+    } else if (rawDue.includes('-')) {
+      const parts = rawDue.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          dueDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        } else {
+          dueDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+      }
+    }
   }
-  const dueDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
+
+  if (!dueDate) {
+    const now = new Date();
+    let nextMonth = now.getMonth() + 2;
+    let nextYear = now.getFullYear();
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    dueDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
+  }
+
+  // Forma de pagamento no Asaas: 'BOLETO' (Boleto Bancário com PIX integrado no próprio boleto)
+  const billingType = params.billingType || 'BOLETO';
 
   try {
     // 1. Busca se o cliente já existe no Asaas por CNPJ ou E-mail
@@ -462,7 +491,7 @@ export async function createAsaasBilling(params = {}) {
       customerId = createCustData.id;
     }
 
-    // 3. Cria a cobrança no Asaas (Cobrança única avulsa com opção de PIX / Boleto / Cartão)
+    // 3. Cria a cobrança no Asaas (Cobrança direta com Boleto / PIX, sem 'perguntar ao cliente')
     const paymentResponse = await fetch(`${baseUrl}/payments`, {
       method: 'POST',
       headers: {
@@ -471,7 +500,7 @@ export async function createAsaasBilling(params = {}) {
       },
       body: JSON.stringify({
         customer: customerId,
-        billingType: 'UNDEFINED', // Permite que o cliente pague por PIX, Boleto ou Cartão
+        billingType: billingType, // 'BOLETO' (Gera boleto bancário com PIX integrado)
         value: Number(amount.toFixed(2)),
         dueDate: dueDate,
         description: description,
@@ -561,6 +590,7 @@ export async function createAsaasBilling(params = {}) {
       pixCopiaCola: pixCode || '',
       qrCodeImage: pixQr ? `data:image/png;base64,${pixQr}` : null,
       dueDate,
+      billingType,
       invoiceScheduled,
       invoiceId,
       invoiceStatus,

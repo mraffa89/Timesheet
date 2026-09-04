@@ -141,25 +141,88 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
 
   const filteredClients = getFilteredClients();
 
-  // Data de vencimento no dia 10 do mês seguinte à emissão do documento
-  const getDueDate = () => {
+  // Data de vencimento personalizável (formato YYYY-MM-DD)
+  const [customDueDate, setCustomDueDate] = useState('');
+
+  // Calcula o vencimento padrão (dia 10 do mês seguinte ao mês da fatura)
+  const getDefaultDueDateForMonth = (monthKey) => {
+    if (monthKey && monthKey.includes('-')) {
+      const parts = monthKey.split('-');
+      let year = parseInt(parts[0], 10);
+      let month = parseInt(parts[1], 10);
+      let nextMonth = month + 1;
+      let nextYear = year;
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear += 1;
+      }
+      return `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
+    }
     const now = new Date();
-    let nextMonth = now.getMonth() + 2; // 0-indexed + 2 = 1-indexed next month
+    let nextMonth = now.getMonth() + 2;
     let nextYear = now.getFullYear();
     if (nextMonth > 12) {
       nextMonth = 1;
       nextYear += 1;
     }
-    const nextMonthPadded = String(nextMonth).padStart(2, '0');
-    return `10/${nextMonthPadded}/${nextYear}`;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
   };
 
-  // Default to first client and current month
+  // Formata a data ISO (YYYY-MM-DD) para exibição brasileira (DD/MM/AAAA)
+  const formatDueDateDisplay = (dateIso) => {
+    if (!dateIso) return '-';
+    if (dateIso.includes('-')) {
+      const parts = dateIso.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+      }
+    }
+    return dateIso;
+  };
+
+  // Handler para quando o usuário altera a data de vencimento no input
+  const handleDueDateChange = (newDate) => {
+    setCustomDueDate(newDate);
+    if (selectedClientId && selectedMonth) {
+      localStorage.setItem(`raffa_invoice_due_${selectedClientId}_${selectedMonth}`, newDate);
+    }
+  };
+
+  // Obtém estritamente os meses existentes nos lançamentos importados (CSVs)
+  const getUniqueMonths = () => {
+    const months = new Set();
+    entries.forEach(e => {
+      const dateStr = e.deliveryDate || e.requestDate;
+      if (dateStr) {
+        const ym = getYearMonth(dateStr);
+        if (ym) {
+          months.add(ym);
+        }
+      }
+    });
+    return Array.from(months).sort().reverse();
+  };
+
+  const uniqueMonths = getUniqueMonths();
+
+  // Sincroniza o mês selecionado exclusivamente com os meses existentes dos CSVs importados
+  useEffect(() => {
+    const availableMonths = getUniqueMonths();
+    if (availableMonths.length > 0) {
+      if (!selectedMonth || !availableMonths.includes(selectedMonth)) {
+        setSelectedMonth(availableMonths[0]);
+      }
+    } else {
+      setSelectedMonth('');
+    }
+  }, [entries]);
+
+  // Atualiza o cliente selecionado quando o mês ou a lista de clientes mudam
   useEffect(() => {
     if (!selectedMonth) {
-      const today = new Date();
-      const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-      setSelectedMonth(currentMonthKey);
+      setSelectedClientId('');
       return;
     }
 
@@ -173,13 +236,32 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
     }
   }, [clients, entries, selectedMonth, selectedClientId]);
 
+  // Carrega a data de vencimento salva para o cliente e mês ou define a padrão
+  useEffect(() => {
+    if (!selectedClientId || !selectedMonth) {
+      setCustomDueDate('');
+      return;
+    }
+
+    const savedDue = localStorage.getItem(`raffa_invoice_due_${selectedClientId}_${selectedMonth}`);
+    if (savedDue) {
+      setCustomDueDate(savedDue);
+    } else {
+      setCustomDueDate(getDefaultDueDateForMonth(selectedMonth));
+    }
+  }, [selectedClientId, selectedMonth]);
+
   // Load persistent Asaas billing when client and month change
   useEffect(() => {
     if (selectedClientId && selectedMonth) {
       const savedBilling = localStorage.getItem(`raffa_asaas_billing_${selectedClientId}_${selectedMonth}`);
       if (savedBilling) {
         try {
-          setAsaasBilling(JSON.parse(savedBilling));
+          const parsed = JSON.parse(savedBilling);
+          setAsaasBilling(parsed);
+          if (parsed?.dueDate) {
+            setCustomDueDate(parsed.dueDate);
+          }
         } catch (e) {
           setAsaasBilling(null);
         }
@@ -260,22 +342,6 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
 
   }, [selectedClientId, selectedMonth, entries, clients]);
 
-  const getUniqueMonths = () => {
-    const months = new Set();
-    const today = new Date();
-    months.add(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
-    
-    entries.forEach(e => {
-      const dateStr = e.deliveryDate || e.requestDate;
-      if (dateStr) {
-        const dateObj = new Date(dateStr + 'T00:00:00');
-        const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
-        months.add(monthKey);
-      }
-    });
-    return Array.from(months).sort().reverse();
-  };
-
   const getMonthNamePT = (monthKey) => {
     if (!monthKey) return '';
     const [year, month] = monthKey.split('-');
@@ -295,7 +361,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
   };
 
   const issueDateStr = new Date().toLocaleDateString('pt-BR');
-  const dueDateStr = getDueDate();
+  const dueDateStr = formatDueDateDisplay(customDueDate || getDefaultDueDateForMonth(selectedMonth));
 
   // Gerador de PDF 100% Vetorial Monocromático
   const handleGeneratePdf = async () => {
@@ -330,7 +396,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
     }
   };
 
-  // Gerar cobrança no Asaas em segundo plano, anexar PDF automaticamente e atualizar relatório
+  // Gerar cobrança no Asaas em segundo plano com Boleto/PIX e data de vencimento configurável
   const handleGenerateAsaasBilling = async () => {
     if (!client) return;
     setIsGeneratingAsaas(true);
@@ -338,11 +404,24 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
     try {
       const storedToken = localStorage.getItem('raffa_asaas_token') || '';
       const storedEnv = localStorage.getItem('raffa_asaas_env') || 'sandbox';
+      const effectiveDueDate = customDueDate || getDefaultDueDateForMonth(selectedMonth);
+
+      // Validação amigável de data no passado para evitar rejeição pela API do Asaas
+      const todayIso = new Date().toISOString().split('T')[0];
+      if (effectiveDueDate < todayIso) {
+        const proceedPast = window.confirm(`Atenção: A data de vencimento configurada (${formatDueDateDisplay(effectiveDueDate)}) é anterior ao dia de hoje.\nA API do Asaas normalmente não aceita emissão de cobranças vencidas.\n\nDeseja prosseguir mesmo assim?`);
+        if (!proceedPast) {
+          setIsGeneratingAsaas(false);
+          return;
+        }
+      }
 
       const result = await createAsaasBilling({
         client,
         financials,
         selectedMonth,
+        dueDate: effectiveDueDate,
+        billingType: 'BOLETO', // Emite diretamente como Boleto Bancário com PIX (sem 'perguntar ao cliente')
         apiKey: storedToken,
         environment: storedEnv
       });
@@ -351,7 +430,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
       setAsaasBilling(result);
       localStorage.setItem(`raffa_asaas_billing_${client.id}_${selectedMonth}`, JSON.stringify(result));
       
-      // Gera o PDF formatado e anexa automaticamente à cobrança no Asaas
+      // Gera o PDF formatado com o QR Code e anexa automaticamente à cobrança no Asaas
       let attachedMsg = '';
       try {
         const doc = await generateInvoicePdf({
@@ -362,7 +441,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
           company,
           asaasBilling: result,
           issueDateStr,
-          dueDateStr,
+          dueDateStr: formatDueDateDisplay(result.dueDate || effectiveDueDate),
           monthName: getMonthNamePT(selectedMonth)
         });
 
@@ -383,7 +462,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
       }
 
       // Feedback amigável
-      alert(`Cobrança gerada com sucesso no Asaas! O QR Code PIX e o link de acesso rápido foram inseridos no demonstrativo.${attachedMsg}`);
+      alert(`Cobrança gerada com sucesso no Asaas via Boleto/PIX! O QR Code PIX e o link de acesso rápido foram inseridos no demonstrativo.${attachedMsg}`);
     } catch (err) {
       alert("Erro ao processar integração com Asaas: " + err.message);
     } finally {
@@ -530,22 +609,49 @@ Atenciosamente,
           </div>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
+            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
+            disabled={filteredClients.length === 0}
           >
-            {filteredClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {filteredClients.length === 0 ? (
+              <option value="">Nenhum cliente disponível</option>
+            ) : (
+              filteredClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+            )}
           </select>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
+            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
+            disabled={uniqueMonths.length === 0}
           >
-            {getUniqueMonths().map(m => (
-              <option key={m} value={m}>{getMonthNamePT(m)}</option>
-            ))}
+            {uniqueMonths.length === 0 ? (
+              <option value="">Nenhum mês de CSV importado</option>
+            ) : (
+              uniqueMonths.map(m => (
+                <option key={m} value={m}>{getMonthNamePT(m)}</option>
+              ))
+            )}
           </select>
+
+          {/* Campo para alterar a data de vencimento */}
+          {selectedMonth && (
+            <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg py-1 px-3 shadow-2xs">
+              <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                <Calendar size={13} className="text-amber-700 shrink-0" />
+                <span>Vencimento:</span>
+              </span>
+              <input 
+                type="date" 
+                value={customDueDate || getDefaultDueDateForMonth(selectedMonth)}
+                onChange={(e) => handleDueDateChange(e.target.value)}
+                className="bg-white border border-amber-300 rounded px-2 py-0.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-yellow-500 cursor-pointer"
+                title="Alterar data de vencimento para o demonstrativo (PDF) e cobrança Asaas"
+              />
+            </div>
+          )}
 
           {client && (
             <div className="ml-auto text-xs font-semibold text-gray-400">
@@ -556,7 +662,12 @@ Atenciosamente,
       </div>
 
       {/* Document / On-Screen Layout Container */}
-      {filteredClients.length === 0 ? (
+      {uniqueMonths.length === 0 ? (
+        <div className="bg-white border border-gray-150 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-2">
+          <p className="text-gray-600 font-semibold text-sm">Nenhum CSV foi importado no sistema ainda.</p>
+          <p className="text-gray-400 text-xs">Utilize o botão "Importar CSV" no topo para carregar suas horas do Planyway e visualizar as faturas.</p>
+        </div>
+      ) : filteredClients.length === 0 ? (
         <div className="bg-white border border-gray-150 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-2">
           <p className="text-gray-400 text-sm">Não há faturamentos ou demandas registradas neste mês.</p>
         </div>
