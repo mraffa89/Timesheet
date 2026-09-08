@@ -157,19 +157,14 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
       <div className="w-full max-w-md bg-white border border-gray-200 rounded-3xl p-8 sm:p-10 shadow-xl shadow-gray-200/60 relative z-10 flex flex-col gap-6 animate-in fade-in-0 zoom-in-95">
         
         {/* Header / Brand */}
-        <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-2xl flex items-center justify-center p-2.5 shadow-md shadow-yellow-500/25">
-            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain drop-shadow-xs" />
+        <div className="flex flex-col items-center text-center gap-2.5">
+          <div className="w-14 h-14 bg-gray-100 border border-gray-200/80 rounded-2xl flex items-center justify-center p-2.5 shadow-2xs">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
           
-          <div>
-            <h1 className="font-title text-2xl font-black text-gray-950 tracking-tight">
-              {companyInfo?.brandName || 'Matheus Raffa'}
-            </h1>
-            <span className="text-[10px] font-extrabold text-yellow-800 uppercase tracking-wider bg-yellow-100 border border-yellow-300/80 px-2.5 py-0.5 rounded-full inline-block mt-1">
-              Sistema de Timesheet & Faturamento
-            </span>
-          </div>
+          <h1 className="font-title text-2xl font-black text-gray-950 tracking-tight">
+            {companyInfo?.brandName || 'Matheus Raffa'}
+          </h1>
         </div>
 
         {/* Form */}
