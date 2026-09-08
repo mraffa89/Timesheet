@@ -12,6 +12,10 @@ export function getSupabaseInstance() {
   return createClient(url, key);
 }
 
+export function checkSupabaseConfigured() {
+  return getSupabaseCredentials().isConfigured;
+}
+
 export const isSupabaseConfigured = getSupabaseCredentials().isConfigured;
 export const supabase = getSupabaseInstance();
 

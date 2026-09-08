@@ -19,7 +19,12 @@ import {
   DollarSign,
   LogOut,
   Key,
-  Briefcase
+  Briefcase,
+  Tag,
+  Edit2,
+  Trash2,
+  Plus,
+  X
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ClientManager from './components/ClientManager';
@@ -35,6 +40,7 @@ import { defaultClients, defaultEntries } from './data/seedData';
 
 // Supabase Connection Import
 import { 
+  checkSupabaseConfigured,
   isSupabaseConfigured,
   getClientsDb,
   addClientDb,
@@ -164,6 +170,30 @@ function App() {
 
   const [savedSuccessMessage, setSavedSuccessMessage] = useState(false);
 
+  // Service Categories Management State
+  const [serviceCategories, setServiceCategories] = useState(() => {
+    try {
+      const saved = localStorage.getItem('raffa_service_categories_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      'Digital',
+      'Material Impresso',
+      'Folheto / Catálogo',
+      'Rede Social / Post',
+      'Anúncio / Tráfego',
+      'Landing Page / Site',
+      'Vídeo / Motion',
+      'Outro'
+    ];
+  });
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [editingCategoryIndex, setEditingCategoryIndex] = useState(null);
+  const [editingCategoryValue, setEditingCategoryValue] = useState('');
+
   // Modals visibility
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState({
@@ -177,7 +207,7 @@ function App() {
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      if (isSupabaseConfigured) {
+      if (checkSupabaseConfigured()) {
         try {
           const dbClients = await getClientsDb();
           const dbEntries = await getEntriesDb();
@@ -599,6 +629,68 @@ function App() {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // Categorias de Serviços / Demandas
+  // ═══════════════════════════════════════════════════════════════
+
+  const handleAddCategory = (newCat) => {
+    const trimmed = (newCat || '').trim();
+    if (!trimmed) return;
+    if (serviceCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      alert('Esta categoria já existe.');
+      return;
+    }
+    const updated = [...serviceCategories, trimmed];
+    setServiceCategories(updated);
+    localStorage.setItem('raffa_service_categories_v1', JSON.stringify(updated));
+  };
+
+  const handleUpdateCategory = (oldCat, newCat) => {
+    const trimmed = (newCat || '').trim();
+    if (!trimmed) return;
+    if (trimmed.toLowerCase() !== oldCat.toLowerCase() && serviceCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      alert('Já existe outra categoria com este nome.');
+      return;
+    }
+    const updated = serviceCategories.map(c => c === oldCat ? trimmed : c);
+    setServiceCategories(updated);
+    localStorage.setItem('raffa_service_categories_v1', JSON.stringify(updated));
+
+    // Atualiza tarefas de freelancers e timesheet que usavam essa categoria
+    setFreelancerTasks(prev => prev.map(t => t.category === oldCat ? { ...t, category: trimmed } : t));
+    setEntries(prev => prev.map(e => e.type === oldCat ? { ...e, type: trimmed } : e));
+  };
+
+  const handleDeleteCategory = (catToDelete) => {
+    if (serviceCategories.length <= 1) {
+      alert('É necessário manter pelo menos uma categoria no sistema.');
+      return;
+    }
+    if (!window.confirm(`Deseja realmente excluir a categoria "${catToDelete}"?`)) {
+      return;
+    }
+    const updated = serviceCategories.filter(c => c !== catToDelete);
+    setServiceCategories(updated);
+    localStorage.setItem('raffa_service_categories_v1', JSON.stringify(updated));
+  };
+
+  const handleResetCategories = () => {
+    if (window.confirm('Deseja restaurar as categorias padrão do sistema?')) {
+      const defaultCats = [
+        'Digital',
+        'Material Impresso',
+        'Folheto / Catálogo',
+        'Rede Social / Post',
+        'Anúncio / Tráfego',
+        'Landing Page / Site',
+        'Vídeo / Motion',
+        'Outro'
+      ];
+      setServiceCategories(defaultCats);
+      localStorage.setItem('raffa_service_categories_v1', JSON.stringify(defaultCats));
+    }
+  };
+
   // Backup handlers
   const handleExportBackup = () => {
     const backupData = {
@@ -606,8 +698,9 @@ function App() {
       entries,
       freelancers,
       freelancerTasks,
+      serviceCategories,
       companyInfo,
-      version: '1.1.0',
+      version: '1.2.0',
       exportedAt: new Date().toISOString()
     };
 
@@ -659,6 +752,10 @@ function App() {
               }
               if (parsed.freelancerTasks) {
                 saveFreelancerTasks(parsed.freelancerTasks);
+              }
+              if (parsed.serviceCategories && Array.isArray(parsed.serviceCategories)) {
+                setServiceCategories(parsed.serviceCategories);
+                localStorage.setItem('raffa_service_categories_v1', JSON.stringify(parsed.serviceCategories));
               }
               if (parsed.companyInfo) {
                 setCompanyInfo(parsed.companyInfo);
@@ -751,6 +848,7 @@ function App() {
         userSession={userSession}
         tasks={freelancerTasks}
         clients={clients}
+        categories={serviceCategories}
         onUpdateTask={handleUpdateFreelancerTask}
         onLogout={handleLogout}
         companyInfo={companyInfo}
@@ -966,6 +1064,8 @@ function App() {
               tasks={freelancerTasks}
               clients={clients}
               companyInfo={companyInfo}
+              categories={serviceCategories}
+              onAddCategory={handleAddCategory}
               onAddFreelancer={handleAddFreelancer}
               onUpdateFreelancer={handleUpdateFreelancer}
               onDeleteFreelancer={handleDeleteFreelancer}
@@ -1119,6 +1219,143 @@ function App() {
                       </button>
                     </div>
                   </form>
+                </div>
+
+                {/* Service Categories Management Card */}
+                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col gap-4 md:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-gray-100 gap-2">
+                    <div>
+                      <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
+                        <Tag size={18} className="text-yellow-600" />
+                        <span>Gerenciamento de Categorias de Serviços</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Cadastre, edite ou remova as categorias de serviços utilizadas na delegação de demandas e no Timesheet.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetCategories}
+                      className="text-[11px] font-bold text-gray-500 hover:text-gray-800 underline self-start sm:self-auto cursor-pointer"
+                    >
+                      Restaurar Padrões
+                    </button>
+                  </div>
+
+                  {/* Add New Category Form */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome da nova categoria (ex: Produção Gráfica, Branding, Motion 3D...)"
+                      value={newCategoryInput}
+                      onChange={(e) => setNewCategoryInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (newCategoryInput.trim()) {
+                            handleAddCategory(newCategoryInput);
+                            setNewCategoryInput('');
+                          }
+                        }
+                      }}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-xs flex-1 focus:outline-none focus:border-yellow-500 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newCategoryInput.trim()) {
+                          handleAddCategory(newCategoryInput);
+                          setNewCategoryInput('');
+                        }
+                      }}
+                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-950 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                    >
+                      <Plus size={14} /> Adicionar Categoria
+                    </button>
+                  </div>
+
+                  {/* Categories Grid List */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 pt-2">
+                    {serviceCategories.map((cat, idx) => {
+                      const isEditing = editingCategoryIndex === idx;
+
+                      if (isEditing) {
+                        return (
+                          <div key={idx} className="flex items-center gap-1.5 p-2 bg-yellow-50 border border-yellow-300 rounded-lg">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingCategoryValue}
+                              onChange={(e) => setEditingCategoryValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleUpdateCategory(cat, editingCategoryValue);
+                                  setEditingCategoryIndex(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingCategoryIndex(null);
+                                }
+                              }}
+                              className="px-2 py-1 bg-white border border-yellow-400 rounded text-xs text-gray-950 font-bold w-full focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleUpdateCategory(cat, editingCategoryValue);
+                                setEditingCategoryIndex(null);
+                              }}
+                              className="p-1 text-green-700 hover:bg-green-100 rounded cursor-pointer"
+                              title="Salvar"
+                            >
+                              <CheckCircle2 size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategoryIndex(null)}
+                              className="p-1 text-gray-400 hover:bg-gray-200 rounded cursor-pointer"
+                              title="Cancelar"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div 
+                          key={idx}
+                          className="flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-yellow-50/40 border border-gray-200 hover:border-yellow-300 rounded-lg transition-colors group"
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="w-2 h-2 rounded-full bg-yellow-500 shrink-0"></span>
+                            <span className="text-xs font-bold text-gray-800 truncate" title={cat}>
+                              {cat}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCategoryIndex(idx);
+                                setEditingCategoryValue(cat);
+                              }}
+                              className="p-1 text-gray-400 hover:text-yellow-700 hover:bg-yellow-100 rounded transition-colors cursor-pointer"
+                              title="Editar Categoria"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat)}
+                              className="p-1 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                              title="Excluir Categoria"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Access Control & Password Settings Card */}

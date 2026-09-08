@@ -25,7 +25,10 @@ import {
   Building,
   Tag,
   PieChart,
-  ChevronDown
+  ChevronDown,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -235,6 +238,8 @@ export default function FreelancerManager({
   tasks = [],
   clients = [],
   companyInfo = {},
+  categories = [],
+  onAddCategory,
   onAddFreelancer,
   onUpdateFreelancer,
   onDeleteFreelancer,
@@ -249,6 +254,26 @@ export default function FreelancerManager({
   const [taskFreelancerFilter, setTaskFreelancerFilter] = useState('all');
   const [taskClientFilter, setTaskClientFilter] = useState('all');
   const [taskSearchTerm, setTaskSearchTerm] = useState('');
+
+  // Task Table Sorting
+  const [taskSortField, setTaskSortField] = useState('requestDate');
+  const [taskSortOrder, setTaskSortOrder] = useState('desc');
+
+  const handleHeaderSort = (field) => {
+    if (taskSortField === field) {
+      setTaskSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setTaskSortField(field);
+      setTaskSortOrder('asc');
+    }
+  };
+
+  const renderSortIndicator = (field) => {
+    if (taskSortField !== field) return <ArrowUpDown size={11} className="text-gray-300 ml-1.5 inline-block shrink-0" />;
+    return taskSortOrder === 'asc' 
+      ? <ArrowUp size={11} className="text-yellow-600 ml-1.5 inline-block shrink-0" /> 
+      : <ArrowDown size={11} className="text-yellow-600 ml-1.5 inline-block shrink-0" />;
+  };
 
   // Payroll filters
   const [payrollMonth, setPayrollMonth] = useState(() => {
@@ -366,13 +391,14 @@ export default function FreelancerManager({
   }, [freelancers]);
 
   const categoryOptions = useMemo(() => {
-    return CATEGORIES.map(cat => ({
+    const list = categories && categories.length > 0 ? categories : CATEGORIES;
+    return list.map(cat => ({
       value: cat,
       label: cat,
       badge: cat,
-      badgeClass: CATEGORY_COLORS[cat]
+      badgeClass: CATEGORY_COLORS[cat] || 'bg-yellow-50 text-yellow-800 border-yellow-200'
     }));
-  }, []);
+  }, [categories]);
 
   const statusOptions = useMemo(() => [
     { value: 'pending', label: 'Pendente', badge: 'Pendente', badgeClass: 'bg-gray-100 text-gray-700 border-gray-200' },
@@ -399,9 +425,9 @@ export default function FreelancerManager({
     ...clientOptions
   ], [clientOptions]);
 
-  // Filtragem de tarefas
+  // Filtragem e ordenação dinâmica de tarefas
   const filteredTasks = useMemo(() => {
-    return tasks.filter(t => {
+    const list = tasks.filter(t => {
       if (taskStatusFilter !== 'all' && t.status !== taskStatusFilter) return false;
       if (taskFreelancerFilter !== 'all' && t.freelancerId !== taskFreelancerFilter) return false;
       if (taskClientFilter !== 'all' && t.clientId !== taskClientFilter) return false;
@@ -413,8 +439,62 @@ export default function FreelancerManager({
         return title.includes(term) || clientName.includes(term) || freelaName.includes(term);
       }
       return true;
-    }).sort((a, b) => new Date(b.requestDate || 0) - new Date(a.requestDate || 0));
-  }, [tasks, taskStatusFilter, taskFreelancerFilter, taskClientFilter, taskSearchTerm, clients, freelancers]);
+    });
+
+    return list.sort((a, b) => {
+      let comparison = 0;
+      switch (taskSortField) {
+        case 'title':
+          comparison = (a.title || '').localeCompare(b.title || '', 'pt-BR', { sensitivity: 'base' });
+          break;
+        case 'freelancer': {
+          const nameA = getFreelancer(a.freelancerId)?.name || '';
+          const nameB = getFreelancer(b.freelancerId)?.name || '';
+          comparison = nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'client': {
+          const clientA = getClientName(a.clientId) || '';
+          const clientB = getClientName(b.clientId) || '';
+          comparison = clientA.localeCompare(clientB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'category':
+          comparison = (a.category || '').localeCompare(b.category || '', 'pt-BR', { sensitivity: 'base' });
+          break;
+        case 'requestDate': {
+          const dateA = a.requestDate ? new Date(a.requestDate).getTime() : 0;
+          const dateB = b.requestDate ? new Date(b.requestDate).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        }
+        case 'expectedDueDate': {
+          const dateA = a.expectedDueDate ? new Date(a.expectedDueDate).getTime() : 0;
+          const dateB = b.expectedDueDate ? new Date(b.expectedDueDate).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        }
+        case 'actualDeliveryDate': {
+          const dateA = a.actualDeliveryDate ? new Date(a.actualDeliveryDate).getTime() : 0;
+          const dateB = b.actualDeliveryDate ? new Date(b.actualDeliveryDate).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        }
+        case 'hours': {
+          const hoursA = parseFloat(a.hours) || 0;
+          const hoursB = parseFloat(b.hours) || 0;
+          comparison = hoursA - hoursB;
+          break;
+        }
+        case 'status':
+          comparison = (a.status || '').localeCompare(b.status || '', 'pt-BR', { sensitivity: 'base' });
+          break;
+        default:
+          comparison = 0;
+      }
+      return taskSortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [tasks, taskStatusFilter, taskFreelancerFilter, taskClientFilter, taskSearchTerm, clients, freelancers, taskSortField, taskSortOrder]);
 
   // Cálculos de Fechamento / Folha de Pagamento
   const payrollData = useMemo(() => {
@@ -851,16 +931,70 @@ export default function FreelancerManager({
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-400 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4">Demanda</th>
-                      <th className="py-3 px-4">Prestador</th>
-                      <th className="py-3 px-4">Cliente</th>
-                      <th className="py-3 px-4">Categoria</th>
-                      <th className="py-3 px-4">Solicitado</th>
-                      <th className="py-3 px-4">Prazo Previsto</th>
-                      <th className="py-3 px-4">Entregue</th>
-                      <th className="py-3 px-4 text-center">Horas</th>
-                      <th className="py-3 px-4 text-center">Status</th>
+                    <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px] select-none">
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('title')}
+                        title="Ordenar por Demanda"
+                      >
+                        <span className="inline-flex items-center">Demanda {renderSortIndicator('title')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('freelancer')}
+                        title="Ordenar por Prestador"
+                      >
+                        <span className="inline-flex items-center">Prestador {renderSortIndicator('freelancer')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('client')}
+                        title="Ordenar por Cliente"
+                      >
+                        <span className="inline-flex items-center">Cliente {renderSortIndicator('client')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('category')}
+                        title="Ordenar por Categoria"
+                      >
+                        <span className="inline-flex items-center">Categoria {renderSortIndicator('category')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('requestDate')}
+                        title="Ordenar por Data de Pedido"
+                      >
+                        <span className="inline-flex items-center">Solicitado {renderSortIndicator('requestDate')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('expectedDueDate')}
+                        title="Ordenar por Prazo Previsto"
+                      >
+                        <span className="inline-flex items-center">Prazo Previsto {renderSortIndicator('expectedDueDate')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('actualDeliveryDate')}
+                        title="Ordenar por Data de Entrega"
+                      >
+                        <span className="inline-flex items-center">Entregue {renderSortIndicator('actualDeliveryDate')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 text-center cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('hours')}
+                        title="Ordenar por Horas"
+                      >
+                        <span className="inline-flex items-center justify-center">Horas {renderSortIndicator('hours')}</span>
+                      </th>
+                      <th 
+                        className="py-3 px-4 text-center cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                        onClick={() => handleHeaderSort('status')}
+                        title="Ordenar por Status"
+                      >
+                        <span className="inline-flex items-center justify-center">Status {renderSortIndicator('status')}</span>
+                      </th>
                       <th className="py-3 px-4 text-right">Ações</th>
                     </tr>
                   </thead>
@@ -868,7 +1002,7 @@ export default function FreelancerManager({
                     {filteredTasks.map(task => {
                       const freela = getFreelancer(task.freelancerId);
                       const clientName = getClientName(task.clientId);
-                      const catBadge = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'];
+                      const catBadge = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'] || 'bg-yellow-50 text-yellow-800 border-yellow-200';
 
                       return (
                         <tr key={task.id} className="hover:bg-yellow-50/30 transition-colors">

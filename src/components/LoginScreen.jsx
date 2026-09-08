@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key, RefreshCw } from 'lucide-react';
+import { getFreelancersDb } from '../lib/supabase';
 
 export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) {
   const [email, setEmail] = useState('');
@@ -14,14 +15,15 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
 
     try {
       const inputEmail = email.trim().toLowerCase();
+      const cleanPassword = password.trim();
 
       // 1. Checa credenciais do Administrador mestre
-      const savedUser = localStorage.getItem('raffa_auth_email') || 'contato@matheusraffa.com.br';
-      const savedPass = localStorage.getItem('raffa_auth_pass') || 'admin123';
+      const savedUser = (localStorage.getItem('raffa_auth_email') || 'contato@matheusraffa.com.br').trim().toLowerCase();
+      const savedPass = (localStorage.getItem('raffa_auth_pass') || 'admin123').trim();
 
       if (
-        (inputEmail === savedUser.toLowerCase() || inputEmail === 'admin' || inputEmail === 'matheus') &&
-        (password === savedPass || password === 'admin123' || password === '123456')
+        (inputEmail === savedUser || inputEmail === 'admin' || inputEmail === 'matheus') &&
+        (cleanPassword === savedPass || cleanPassword === 'admin123' || cleanPassword === '123456')
       ) {
         const userSession = {
           email: inputEmail.includes('@') ? inputEmail : `${inputEmail}@matheusraffa.com.br`,
@@ -44,15 +46,37 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         } catch (e) {}
       }
 
-      const matchedFreelancer = allFreelas.find(f => 
-        f.isActive !== false &&
-        (
-          (f.username && f.username.toLowerCase() === inputEmail) || 
-          (f.email && f.email.toLowerCase() === inputEmail) ||
-          (f.name && f.name.toLowerCase() === inputEmail)
-        ) &&
-        String(f.password) === String(password)
-      );
+      const matchFreelancer = (f) => {
+        if (!f) return false;
+        const isActive = f.isActive !== false && f.is_active !== false;
+        if (!isActive) return false;
+
+        const fUser = String(f.username || '').trim().toLowerCase();
+        const fEmail = String(f.email || '').trim().toLowerCase();
+        const fName = String(f.name || '').trim().toLowerCase();
+        const fPass = String(f.password || '').trim();
+
+        const userMatch = fUser === inputEmail || fEmail === inputEmail || fName === inputEmail;
+        const passMatch = fPass === cleanPassword;
+        return userMatch && passMatch;
+      };
+
+      let matchedFreelancer = allFreelas.find(matchFreelancer);
+
+      // Se não encontrou na memória ou LocalStorage, busca diretamente no Supabase em tempo real
+      if (!matchedFreelancer) {
+        try {
+          const dbFreelas = await getFreelancersDb();
+          if (Array.isArray(dbFreelas) && dbFreelas.length > 0) {
+            matchedFreelancer = dbFreelas.find(matchFreelancer);
+            try {
+              localStorage.setItem('raffa_freelancers_v1', JSON.stringify(dbFreelas));
+            } catch (eCache) {}
+          }
+        } catch (eDb) {
+          console.warn("Consulta direta ao banco Supabase durante o login falhou:", eDb);
+        }
+      }
 
       if (matchedFreelancer) {
         const userSession = {
@@ -152,8 +176,17 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
             disabled={isLoading}
             className="w-full mt-2 py-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-yellow-500/10 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
           >
-            <span>{isLoading ? 'Autenticando...' : 'Acessar Sistema'}</span>
-            <ArrowRight size={15} />
+            {isLoading ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>Autenticando...</span>
+              </>
+            ) : (
+              <>
+                <span>Acessar Sistema</span>
+                <ArrowRight size={15} />
+              </>
+            )}
           </button>
         </form>
 

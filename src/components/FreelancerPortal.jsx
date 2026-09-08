@@ -33,6 +33,7 @@ export default function FreelancerPortal({
   userSession, 
   tasks = [], 
   clients = [], 
+  categories = [],
   onUpdateTask, 
   onLogout,
   companyInfo = {} 
@@ -362,7 +363,7 @@ export default function FreelancerPortal({
                 <tbody className="divide-y divide-gray-150">
                   {filteredTasks.map(task => {
                     const clientName = getClientName(task.clientId);
-                    const catBadgeStyle = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'];
+                    const catBadgeStyle = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'] || 'bg-yellow-50 text-yellow-800 border-yellow-200';
                     const isDelivered = task.status === 'delivered' || task.status === 'paid';
 
                     return (
