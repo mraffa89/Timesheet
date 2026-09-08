@@ -32,20 +32,6 @@ import {
 } from 'lucide-react';
 import { formatPhone } from '../utils/cnpjLookup';
 
-const CATEGORY_COLORS = {
-  'Digital': 'bg-blue-50 text-blue-700 border-blue-200',
-  'Material Impresso': 'bg-purple-50 text-purple-700 border-purple-200',
-  'Folheto / Catálogo': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Rede Social / Post': 'bg-pink-50 text-pink-700 border-pink-200',
-  'Anúncio / Tráfego': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Landing Page / Site': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Vídeo / Motion': 'bg-red-50 text-red-700 border-red-200',
-  'Apresentações / Conceitos': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Banners / Site': 'bg-teal-50 text-teal-700 border-teal-200',
-  'Criativos / Tráfego': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Outro': 'bg-gray-100 text-gray-700 border-gray-200'
-};
-
 export default function FreelancerPortal({ 
   userSession, 
   tasks = [], 
@@ -62,6 +48,11 @@ export default function FreelancerPortal({
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // Filtro de seleção de datas: 'current_month', 'prev_month', 'custom', 'all'
+  const [periodFilter, setPeriodFilter] = useState('current_month');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
   // Ordenação da tabela
   const [taskSortField, setTaskSortField] = useState('requestDate');
   const [taskSortOrder, setTaskSortOrder] = useState('desc');
@@ -103,39 +94,107 @@ export default function FreelancerPortal({
     return tasks.filter(t => t.freelancerId === userSession?.freelancerId || t.freelancerId === userSession?.id);
   }, [tasks, userSession]);
 
-  // Contadores para as abas de filtro
-  const filterCounts = useMemo(() => {
-    return {
-      all: myTasks.length,
-      pending: myTasks.filter(t => t.status === 'pending').length,
-      in_progress: myTasks.filter(t => t.status === 'in_progress').length,
-      delivered: myTasks.filter(t => t.status === 'delivered').length,
-      paid: myTasks.filter(t => t.status === 'paid').length
-    };
-  }, [myTasks]);
+  // Intervalo de datas calculado
+  const { periodStart, periodEnd, periodLabel } = useMemo(() => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
 
-  // Métricas do mês atual
-  const currentMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-  
+    if (periodFilter === 'current_month') {
+      const start = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(curYear, curMonth + 1, 0).getDate();
+      const end = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const monthName = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return { 
+        periodStart: start, 
+        periodEnd: end, 
+        periodLabel: monthName.charAt(0).toUpperCase() + monthName.slice(1)
+      };
+    }
+
+    if (periodFilter === 'prev_month') {
+      const prevDate = new Date(curYear, curMonth - 1, 1);
+      const prevYear = prevDate.getFullYear();
+      const prevMonth = prevDate.getMonth();
+      const start = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(prevYear, prevMonth + 1, 0).getDate();
+      const end = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const monthName = prevDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return { 
+        periodStart: start, 
+        periodEnd: end, 
+        periodLabel: monthName.charAt(0).toUpperCase() + monthName.slice(1)
+      };
+    }
+
+    if (periodFilter === 'custom') {
+      return { 
+        periodStart: customStartDate || null, 
+        periodEnd: customEndDate || null,
+        periodLabel: customStartDate && customEndDate 
+          ? `${formatDateBR(customStartDate)} a ${formatDateBR(customEndDate)}`
+          : 'Personalizado'
+      };
+    }
+
+    return { periodStart: null, periodEnd: null, periodLabel: 'Todo o histórico' };
+  }, [periodFilter, customStartDate, customEndDate]);
+
+  // Função para verificar se a demanda pertence ao período
+  const isTaskInPeriod = (task) => {
+    if (!periodStart && !periodEnd) return true;
+    
+    // Se a tarefa já foi entregue ou paga, usa a data de entrega
+    if (task.status === 'delivered' || task.status === 'paid') {
+      const d = task.actualDeliveryDate || task.requestDate;
+      if (!d) return true;
+      if (periodStart && d < periodStart) return false;
+      if (periodEnd && d > periodEnd) return false;
+      return true;
+    }
+
+    // Se estiver pendente ou em andamento, verifica se o pedido ou prazo está no período
+    const refDate = task.expectedDueDate || task.requestDate;
+    if (!refDate) return true;
+    if (periodStart && refDate < periodStart) return false;
+    if (periodEnd && refDate > periodEnd) return false;
+    return true;
+  };
+
+  // Contadores para as abas de filtro (considerando período atual)
+  const filterCounts = useMemo(() => {
+    const periodFiltered = myTasks.filter(isTaskInPeriod);
+    return {
+      all: periodFiltered.length,
+      pending: periodFiltered.filter(t => t.status === 'pending').length,
+      in_progress: periodFiltered.filter(t => t.status === 'in_progress').length,
+      delivered: periodFiltered.filter(t => t.status === 'delivered').length,
+      paid: periodFiltered.filter(t => t.status === 'paid').length
+    };
+  }, [myTasks, periodStart, periodEnd]);
+
+  // Métricas do período selecionado
   const metrics = useMemo(() => {
     const pendingTasks = myTasks.filter(t => t.status === 'pending' || t.status === 'in_progress');
-    const deliveredThisMonth = myTasks.filter(t => {
+    
+    const deliveredInPeriod = myTasks.filter(t => {
       if (t.status !== 'delivered' && t.status !== 'paid') return false;
-      const date = t.actualDeliveryDate || t.requestDate || '';
-      return date.startsWith(currentMonthKey);
+      const refDate = t.actualDeliveryDate || t.requestDate || '';
+      if (!periodStart || !periodEnd) return true;
+      return refDate >= periodStart && refDate <= periodEnd;
     });
 
-    const totalHoursThisMonth = deliveredThisMonth.reduce((acc, t) => acc + (parseFloat(t.hours) || 0), 0);
+    const totalHoursPeriod = deliveredInPeriod.reduce((acc, t) => acc + (parseFloat(t.hours) || 0), 0);
     const hourlyRate = parseFloat(currentFreelancer?.hourlyRate || userSession?.hourlyRate) || 0;
-    const estimatedEarnings = totalHoursThisMonth * hourlyRate;
+    const estimatedEarnings = totalHoursPeriod * hourlyRate;
 
     return {
       pendingCount: pendingTasks.length,
-      deliveredMonthCount: deliveredThisMonth.length,
-      totalHoursMonth: totalHoursThisMonth,
+      deliveredCount: deliveredInPeriod.length,
+      totalHours: totalHoursPeriod,
       estimatedEarnings
     };
-  }, [myTasks, currentMonthKey, currentFreelancer, userSession]);
+  }, [myTasks, periodStart, periodEnd, currentFreelancer, userSession]);
 
   // Manipulação de ordenação da tabela
   const handleSort = (field) => {
@@ -158,9 +217,77 @@ export default function FreelancerPortal({
     );
   };
 
+  // Status em relação ao prazo esperado
+  const getDeliveryDeadlineStatus = (task) => {
+    const isDelivered = task.status === 'delivered' || task.status === 'paid';
+    const dueDateStr = task.expectedDueDate;
+    const deliveryDateStr = task.actualDeliveryDate;
+
+    if (isDelivered) {
+      if (!dueDateStr) {
+        return {
+          label: 'Entregue',
+          badgeClass: 'bg-green-50 text-green-700 border-green-200',
+          icon: CheckCircle2
+        };
+      }
+      if (deliveryDateStr && deliveryDateStr <= dueDateStr) {
+        return {
+          label: 'Entregue no prazo',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          icon: CheckCircle2
+        };
+      } else if (deliveryDateStr && deliveryDateStr > dueDateStr) {
+        return {
+          label: 'Entregue c/ atraso',
+          badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+          icon: AlertCircle
+        };
+      }
+      return {
+        label: 'Entregue',
+        badgeClass: 'bg-green-50 text-green-700 border-green-200',
+        icon: CheckCircle2
+      };
+    }
+
+    // Pendente ou em andamento
+    if (!dueDateStr) {
+      return {
+        label: 'Sem prazo estipulado',
+        badgeClass: 'bg-gray-100 text-gray-500 border-gray-200',
+        icon: Clock
+      };
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (dueDateStr < todayStr) {
+      return {
+        label: 'Atrasado',
+        badgeClass: 'bg-red-50 text-red-700 border-red-200',
+        icon: AlertCircle
+      };
+    } else if (dueDateStr === todayStr) {
+      return {
+        label: 'Vence hoje',
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        icon: Clock
+      };
+    } else {
+      return {
+        label: 'No prazo',
+        badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+        icon: Clock
+      };
+    }
+  };
+
   // Lista filtrada e ordenada para exibição
   const filteredTasks = useMemo(() => {
     const list = myTasks.filter(task => {
+      // Filtro de data / período
+      if (!isTaskInPeriod(task)) return false;
+
       // Filtro de status
       if (statusFilter !== 'all') {
         if (statusFilter === 'pending' && task.status !== 'pending') return false;
@@ -228,7 +355,7 @@ export default function FreelancerPortal({
       }
       return taskSortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [myTasks, statusFilter, searchTerm, clients, taskSortField, taskSortOrder]);
+  }, [myTasks, periodFilter, periodStart, periodEnd, statusFilter, searchTerm, clients, taskSortField, taskSortOrder]);
 
   // Abre modal de entrega
   const handleOpenDeliveryModal = (task) => {
@@ -336,18 +463,18 @@ export default function FreelancerPortal({
     }
   };
 
-  const formatDateBR = (dateStr) => {
+  function formatDateBR(dateStr) {
     if (!dateStr) return '-';
     const parts = dateStr.split('-');
     if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
     return dateStr;
-  };
+  }
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   };
 
-  // Retorna badge visual de status
+  // Retorna badge visual de status geral
   const getStatusBadge = (status) => {
     switch (status) {
       case 'paid':
@@ -378,54 +505,17 @@ export default function FreelancerPortal({
     }
   };
 
-  // Verifica urgência da data esperada
-  const getDueBadge = (dueDateStr, status) => {
-    if (status === 'delivered' || status === 'paid') {
-      return (
-        <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-200">
-          Entregue
-        </span>
-      );
-    }
-    if (!dueDateStr) return <span className="text-gray-400 text-xs">-</span>;
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (dueDateStr < todayStr) {
-      return (
-        <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200 flex items-center gap-1">
-          <AlertCircle size={10} /> Atrasado ({formatDateBR(dueDateStr)})
-        </span>
-      );
-    } else if (dueDateStr === todayStr) {
-      return (
-        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-          Vence Hoje ({formatDateBR(dueDateStr)})
-        </span>
-      );
-    }
-    return (
-      <span className="text-[10px] font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
-        Prazo: {formatDateBR(dueDateStr)}
-      </span>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {/* Top Navbar */}
+      {/* Top Navbar (Sem o badge 'Portal do Prestador') */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-title text-base font-black text-gray-900 leading-tight">
-                  {companyInfo?.brandName || 'Matheus Raffa'}
-                </h1>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider bg-yellow-100 text-yellow-800 border border-yellow-300 px-2 py-0.5 rounded-md">
-                  Portal do Prestador
-                </span>
-              </div>
+              <h1 className="font-title text-base font-black text-gray-900 leading-tight">
+                {companyInfo?.brandName || 'Matheus Raffa'}
+              </h1>
               <p className="text-[11px] text-gray-500 font-medium">Gestão de Demandas & Lançamento de Horas</p>
             </div>
           </div>
@@ -461,28 +551,98 @@ export default function FreelancerPortal({
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full flex flex-col gap-6">
-        {/* Welcome Banner (Clean, sem evidência excessiva do valor da hora) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h2 className="text-xl font-black text-gray-950 flex items-center gap-2">
-              <span>Olá, {userSession?.name?.split(' ')[0]}!</span>
-              <Sparkles size={18} className="text-yellow-500" />
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Confira abaixo suas tarefas em aberto. Ao finalizar cada demanda, registre a data de entrega e as horas técnicas gastas.
-            </p>
-          </div>
-
-          <button
-            onClick={handleOpenProfileModal}
-            className="text-xs font-bold text-gray-600 hover:text-yellow-700 bg-gray-50 hover:bg-yellow-50/60 border border-gray-200 hover:border-yellow-300 px-3 py-2 rounded-xl transition-colors inline-flex items-center gap-2 cursor-pointer"
-          >
-            <User size={13} />
-            <span>Editar Meus Dados / PIX / Senha</span>
-          </button>
+        
+        {/* Welcome Banner (Clean, sem botão 'Editar Meus Dados') */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xs">
+          <h2 className="text-xl font-black text-gray-950 flex items-center gap-2">
+            <span>Olá, {userSession?.name?.split(' ')[0]}!</span>
+            <Sparkles size={18} className="text-yellow-500" />
+          </h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Confira abaixo suas tarefas em aberto. Ao finalizar cada demanda, registre a data de entrega e as horas técnicas gastas.
+          </p>
         </div>
 
-        {/* Metric Cards Grid */}
+        {/* Barra de Filtro de Período (Mês Atual, Mês Anterior, Personalizado, Todos) */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar size={16} className="text-yellow-600 shrink-0" />
+            <span className="text-xs font-bold text-gray-900">Período de Referência:</span>
+            <span className="text-xs font-bold text-yellow-800 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-md">
+              {periodLabel}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setPeriodFilter('current_month')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  periodFilter === 'current_month'
+                    ? 'bg-white text-gray-950 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Mês Atual
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodFilter('prev_month')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  periodFilter === 'prev_month'
+                    ? 'bg-white text-gray-950 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Mês Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodFilter('custom')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  periodFilter === 'custom'
+                    ? 'bg-white text-gray-950 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Personalizado
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodFilter('all')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  periodFilter === 'all'
+                    ? 'bg-white text-gray-950 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Todos
+              </button>
+            </div>
+
+            {periodFilter === 'custom' && (
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs animate-in fade-in-0">
+                <span className="text-[10px] font-bold text-gray-500 uppercase">De:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                />
+                <span className="text-[10px] font-bold text-gray-500 uppercase">Até:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Metric Cards Grid com dados do período selecionado */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-2xs flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
@@ -499,8 +659,8 @@ export default function FreelancerPortal({
               <CheckCircle2 size={20} />
             </div>
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 block">Entregues no Mês</span>
-              <span className="text-xl font-black text-gray-900 font-title">{metrics.deliveredMonthCount}</span>
+              <span className="text-[11px] font-semibold text-gray-500 block">Entregues no Período</span>
+              <span className="text-xl font-black text-gray-900 font-title">{metrics.deliveredCount}</span>
             </div>
           </div>
 
@@ -509,8 +669,8 @@ export default function FreelancerPortal({
               <Calendar size={20} />
             </div>
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 block">Horas Realizadas (Mês)</span>
-              <span className="text-xl font-black text-gray-900 font-title">{metrics.totalHoursMonth.toFixed(1).replace('.', ',')}h</span>
+              <span className="text-[11px] font-semibold text-gray-500 block">Horas Realizadas</span>
+              <span className="text-xl font-black text-gray-900 font-title">{metrics.totalHours.toFixed(1).replace('.', ',')}h</span>
             </div>
           </div>
 
@@ -598,10 +758,10 @@ export default function FreelancerPortal({
             <div className="p-12 text-center flex flex-col items-center justify-center gap-2">
               <CheckCircle2 size={36} className="text-gray-300 mb-1" />
               <p className="text-sm font-bold text-gray-800">
-                {statusFilter === 'pending' ? 'Tudo em dia! Nenhuma tarefa pendente no momento.' : 'Nenhuma tarefa encontrada com os filtros aplicados.'}
+                Nenhuma tarefa encontrada para este filtro/período.
               </p>
               <p className="text-xs text-gray-400">
-                Assim que o Matheus atribuir novas demandas a você, elas aparecerão listadas aqui.
+                Tente alterar o período de datas ou selecionar a aba "Todas".
               </p>
             </div>
           ) : (
@@ -703,8 +863,9 @@ export default function FreelancerPortal({
                 <tbody className="divide-y divide-gray-150">
                   {filteredTasks.map(task => {
                     const clientName = getClientName(task.clientId);
-                    const catBadgeStyle = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'] || 'bg-yellow-50 text-yellow-800 border-yellow-200';
                     const isDelivered = task.status === 'delivered' || task.status === 'paid';
+                    const deadlineInfo = getDeliveryDeadlineStatus(task);
+                    const DeadlineIcon = deadlineInfo.icon;
 
                     return (
                       <tr key={task.id} className="hover:bg-yellow-50/30 transition-colors">
@@ -735,10 +896,11 @@ export default function FreelancerPortal({
                           </span>
                         </td>
 
+                        {/* Categoria padronizada em cinza claro */}
                         <td className="py-3.5 px-4">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${catBadgeStyle}`}>
-                            <Tag size={10} />
-                            <span>{task.category || 'Digital'}</span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700 border border-gray-200">
+                            <Tag size={10} className="text-gray-400" />
+                            <span>{task.category || 'Geral'}</span>
                           </span>
                         </td>
 
@@ -746,10 +908,20 @@ export default function FreelancerPortal({
                           {formatDateBR(task.requestDate)}
                         </td>
 
+                        {/* Prazo Esperado com data explícita E status relativo ao prazo */}
                         <td className="py-3.5 px-4">
-                          {getDueBadge(task.expectedDueDate, task.status)}
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="font-mono text-[11px] text-gray-800 font-semibold">
+                              {task.expectedDueDate ? formatDateBR(task.expectedDueDate) : <span className="text-gray-400 font-normal">Não estipulado</span>}
+                            </span>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${deadlineInfo.badgeClass}`}>
+                              <DeadlineIcon size={10} />
+                              <span>{deadlineInfo.label}</span>
+                            </span>
+                          </div>
                         </td>
 
+                        {/* Status Geral */}
                         <td className="py-3.5 px-4">
                           {getStatusBadge(task.status)}
                         </td>
@@ -772,6 +944,7 @@ export default function FreelancerPortal({
                           )}
                         </td>
 
+                        {/* Botão de ação: Registrar horas */}
                         <td className="py-3.5 px-4 text-right">
                           <button
                             onClick={() => handleOpenDeliveryModal(task)}
@@ -781,8 +954,8 @@ export default function FreelancerPortal({
                                 : 'bg-yellow-400 hover:bg-yellow-500 text-gray-950'
                             }`}
                           >
-                            <CheckCircle2 size={13} />
-                            <span>{isDelivered ? 'Editar Horas' : 'Entregar & Lançar Horas'}</span>
+                            <Clock size={13} />
+                            <span>Registrar horas</span>
                           </button>
                         </td>
                       </tr>
@@ -970,7 +1143,7 @@ export default function FreelancerPortal({
                   <Clock size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-gray-950">Lançar Horas & Entrega</h3>
+                  <h3 className="text-sm font-bold text-gray-950">Registrar Horas & Entrega</h3>
                   <span className="text-[11px] text-gray-500">Demanda: {selectedTaskForDelivery.title}</span>
                 </div>
               </div>
@@ -1046,7 +1219,7 @@ export default function FreelancerPortal({
                   className="flex items-center gap-1.5 px-5 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-950 text-xs font-bold rounded-lg shadow-xs cursor-pointer transition-colors"
                 >
                   <CheckCircle2 size={14} />
-                  <span>{isSubmitting ? 'Salvando...' : 'Confirmar Entrega & Lançar'}</span>
+                  <span>{isSubmitting ? 'Salvando...' : 'Confirmar & Lançar Horas'}</span>
                 </button>
               </div>
             </form>
