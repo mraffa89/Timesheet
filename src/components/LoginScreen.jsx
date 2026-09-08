@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key, RefreshCw } from 'lucide-react';
-import { getFreelancersDb } from '../lib/supabase';
+import { authenticateFreelancerDb, getSupabaseCredentials } from '../lib/supabase';
 
 export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  const { isConfigured: isSupabaseConfigured } = getSupabaseCredentials();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,7 +39,35 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         return;
       }
 
-      // 2. Checa se é um Freelancer / Prestador de Serviço cadastrado
+      // 2. Tenta autenticação direta via Supabase em tempo real
+      const authResult = await authenticateFreelancerDb(inputEmail, cleanPassword);
+
+      if (authResult.success && authResult.user) {
+        const matched = authResult.user;
+        const userSession = {
+          id: matched.id,
+          email: matched.username || matched.email || matched.name,
+          name: matched.name,
+          role: 'Freelancer',
+          freelancerId: matched.id,
+          hourlyRate: matched.hourlyRate || 0,
+          specialty: matched.specialty || '',
+          allowedTabs: matched.allowedTabs && matched.allowedTabs.length > 0 
+            ? matched.allowedTabs 
+            : ['freelancer-tasks'],
+          loggedAt: new Date().toISOString()
+        };
+        localStorage.setItem('raffa_session_user', JSON.stringify(userSession));
+        if (authResult.all && Array.isArray(authResult.all)) {
+          try {
+            localStorage.setItem('raffa_freelancers_v1', JSON.stringify(authResult.all));
+          } catch (eCache) {}
+        }
+        onLogin(userSession);
+        return;
+      }
+
+      // 3. Fallback em memória ou LocalStorage caso Supabase esteja desconectado ou com erro
       let allFreelas = Array.isArray(freelancers) ? [...freelancers] : [];
       if (allFreelas.length === 0) {
         try {
@@ -46,49 +76,32 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         } catch (e) {}
       }
 
-      const matchFreelancer = (f) => {
-        if (!f) return false;
-        const isActive = f.isActive !== false && f.is_active !== false;
-        if (!isActive) return false;
+      const normalize = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const target = normalize(inputEmail);
+      const targetPrefix = target.includes('@') ? target.split('@')[0] : target;
 
-        const fUser = String(f.username || '').trim().toLowerCase();
-        const fEmail = String(f.email || '').trim().toLowerCase();
-        const fName = String(f.name || '').trim().toLowerCase();
-        const fPass = String(f.password || '').trim();
+      const matchedLocal = allFreelas.find(f => {
+        const u = normalize(f.username);
+        const e = normalize(f.email);
+        const n = normalize(f.name);
+        const uPrefix = u.includes('@') ? u.split('@')[0] : u;
 
-        const userMatch = fUser === inputEmail || fEmail === inputEmail || fName === inputEmail;
-        const passMatch = fPass === cleanPassword;
-        return userMatch && passMatch;
-      };
+        const userMatches = u === target || e === target || n === target || u === targetPrefix || uPrefix === target;
+        const passMatches = String(f.password || '').trim() === cleanPassword;
+        return userMatches && passMatches && f.isActive !== false && f.is_active !== false;
+      });
 
-      let matchedFreelancer = allFreelas.find(matchFreelancer);
-
-      // Se não encontrou na memória ou LocalStorage, busca diretamente no Supabase em tempo real
-      if (!matchedFreelancer) {
-        try {
-          const dbFreelas = await getFreelancersDb();
-          if (Array.isArray(dbFreelas) && dbFreelas.length > 0) {
-            matchedFreelancer = dbFreelas.find(matchFreelancer);
-            try {
-              localStorage.setItem('raffa_freelancers_v1', JSON.stringify(dbFreelas));
-            } catch (eCache) {}
-          }
-        } catch (eDb) {
-          console.warn("Consulta direta ao banco Supabase durante o login falhou:", eDb);
-        }
-      }
-
-      if (matchedFreelancer) {
+      if (matchedLocal) {
         const userSession = {
-          id: matchedFreelancer.id,
-          email: matchedFreelancer.username || matchedFreelancer.email || matchedFreelancer.name,
-          name: matchedFreelancer.name,
+          id: matchedLocal.id,
+          email: matchedLocal.username || matchedLocal.email || matchedLocal.name,
+          name: matchedLocal.name,
           role: 'Freelancer',
-          freelancerId: matchedFreelancer.id,
-          hourlyRate: matchedFreelancer.hourlyRate || 0,
-          specialty: matchedFreelancer.specialty || '',
-          allowedTabs: matchedFreelancer.allowedTabs && matchedFreelancer.allowedTabs.length > 0 
-            ? matchedFreelancer.allowedTabs 
+          freelancerId: matchedLocal.id,
+          hourlyRate: matchedLocal.hourlyRate || 0,
+          specialty: matchedLocal.specialty || '',
+          allowedTabs: matchedLocal.allowedTabs && matchedLocal.allowedTabs.length > 0 
+            ? matchedLocal.allowedTabs 
             : ['freelancer-tasks'],
           loggedAt: new Date().toISOString()
         };
@@ -97,7 +110,22 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         return;
       }
 
-      setErrorMessage('E-mail/usuário ou senha incorretos. Verifique suas credenciais.');
+      // 4. Diagnóstico preciso do motivo da falha
+      if (authResult.reason === 'supabase_not_configured') {
+        setErrorMessage('O banco Supabase não está configurado neste navegador. Entre como Administrador primeiro para salvar as credenciais em Configurações.');
+      } else if (authResult.reason === 'database_error') {
+        setErrorMessage(`Erro ao consultar o banco Supabase: ${authResult.error || 'Falha de conexão'}.`);
+      } else if (authResult.reason === 'empty_table_or_rls') {
+        setErrorMessage('Nenhum prestador retornado pelo banco (a tabela freelancers está vazia ou bloqueada pelo RLS do Supabase). Desative o RLS da tabela freelancers no SQL Editor do Supabase.');
+      } else if (authResult.reason === 'wrong_password') {
+        setErrorMessage('A senha informada está incorreta para este usuário.');
+      } else if (authResult.reason === 'inactive_user') {
+        setErrorMessage('Este prestador está marcado como inativo no sistema.');
+      } else if (authResult.reason === 'user_not_found') {
+        setErrorMessage(`Prestador com o usuário ou e-mail "${email}" não foi encontrado no cadastro.`);
+      } else {
+        setErrorMessage('E-mail/usuário ou senha incorretos. Verifique suas credenciais.');
+      }
     } catch (err) {
       setErrorMessage('Erro ao realizar login: ' + err.message);
     } finally {
@@ -196,7 +224,17 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
             <ShieldCheck size={13} className="text-emerald-500" />
             Conexão Protegida
           </span>
-          <span className="text-[10px] text-slate-600">v1.0.0 Online</span>
+          {isSupabaseConfigured ? (
+            <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              Supabase Conectado
+            </span>
+          ) : (
+            <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1" title="Configure a URL e Anon Key do Supabase nas Configurações do Administrador">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              Supabase Offline
+            </span>
+          )}
         </div>
 
       </div>

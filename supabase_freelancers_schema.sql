@@ -33,12 +33,22 @@ create table if not exists public.freelancer_tasks (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
--- Habilitar RLS ou políticas públicas de acesso caso o anon key seja utilizado diretamente
-alter table public.freelancers enable row level security;
-alter table public.freelancer_tasks enable row level security;
+-- 3. Desativar RLS para permitir leitura e escrita públicas anônimas
+-- (Padrão idêntico ao já utilizado nas tabelas clients e entries do sistema)
+ALTER TABLE public.freelancers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.freelancer_tasks DISABLE ROW LEVEL SECURITY;
 
-create policy "Acesso público anônimo a freelancers" on public.freelancers
-  for all using (true) with check (true);
+-- Caso prefira manter o RLS ativado no Supabase, execute as políticas permissivas abaixo:
+/*
+ALTER TABLE public.freelancers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.freelancer_tasks ENABLE ROW LEVEL SECURITY;
 
-create policy "Acesso público anônimo a freelancer_tasks" on public.freelancer_tasks
-  for all using (true) with check (true);
+DROP POLICY IF EXISTS "Acesso público anônimo a freelancers" ON public.freelancers;
+DROP POLICY IF EXISTS "Acesso público anônimo a freelancer_tasks" ON public.freelancer_tasks;
+
+CREATE POLICY "Acesso público anônimo a freelancers" ON public.freelancers
+  FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "Acesso público anônimo a freelancer_tasks" ON public.freelancer_tasks
+  FOR ALL TO public, anon, authenticated USING (true) WITH CHECK (true);
+*/

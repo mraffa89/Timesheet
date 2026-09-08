@@ -280,7 +280,7 @@ function mapFreelancerToDb(freelancer) {
   };
 }
 
-function mapFreelancerFromDb(db) {
+export function mapFreelancerFromDb(db) {
   return {
     id: db.id,
     name: db.name,
@@ -295,6 +295,72 @@ function mapFreelancerFromDb(db) {
     isActive: db.is_active !== undefined ? db.is_active : true,
     createdAt: db.created_at
   };
+}
+
+export async function authenticateFreelancerDb(loginIdentifier, rawPassword) {
+  const db = getSupabaseInstance();
+  if (!db) {
+    return { success: false, reason: 'supabase_not_configured' };
+  }
+
+  const cleanLogin = String(loginIdentifier || '').trim().toLowerCase();
+  const cleanPass = String(rawPassword || '').trim();
+
+  try {
+    const { data, error } = await db
+      .from('freelancers')
+      .select('*');
+
+    if (error) {
+      return { success: false, reason: 'database_error', error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return { success: false, reason: 'empty_table_or_rls' };
+    }
+
+    const freelas = data.map(mapFreelancerFromDb);
+
+    const normalize = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const target = normalize(cleanLogin);
+    const targetPrefix = target.includes('@') ? target.split('@')[0] : target;
+
+    const matched = freelas.find(f => {
+      const u = normalize(f.username);
+      const e = normalize(f.email);
+      const n = normalize(f.name);
+      const uPrefix = u.includes('@') ? u.split('@')[0] : u;
+
+      const userMatches = u === target || e === target || n === target || u === targetPrefix || uPrefix === target;
+      const passMatches = String(f.password || '').trim() === cleanPass;
+
+      return userMatches && passMatches;
+    });
+
+    if (matched) {
+      if (matched.isActive === false) {
+        return { success: false, reason: 'inactive_user', user: matched };
+      }
+      return { success: true, user: matched, all: freelas };
+    }
+
+    // Verifica se o usuário foi encontrado, mas a senha está incorreta
+    const userExists = freelas.some(f => {
+      const u = normalize(f.username);
+      const e = normalize(f.email);
+      const n = normalize(f.name);
+      const uPrefix = u.includes('@') ? u.split('@')[0] : u;
+      return u === target || e === target || n === target || u === targetPrefix || uPrefix === target;
+    });
+
+    if (userExists) {
+      return { success: false, reason: 'wrong_password', all: freelas };
+    }
+
+    return { success: false, reason: 'user_not_found', all: freelas };
+  } catch (err) {
+    return { success: false, reason: 'database_error', error: err.message };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
