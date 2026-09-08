@@ -1052,13 +1052,6 @@ export default function FreelancerPortal({
                 </div>
               </div>
 
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between text-xs">
-                <span className="text-gray-500">Valor da hora cadastrada:</span>
-                <span className="font-bold text-gray-900 font-title">
-                  {formatCurrency(currentFreelancer?.hourlyRate || userSession?.hourlyRate)}/h
-                </span>
-              </div>
-
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                 <button
                   type="button"

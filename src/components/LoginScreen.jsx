@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key, RefreshCw, Server, X, CheckCircle2 } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, RefreshCw, Server, X, Eye, EyeOff } from 'lucide-react';
 import { authenticateFreelancerDb, getSupabaseCredentials } from '../lib/supabase';
 
 export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Supabase connection state and modal
+  // Supabase quick config modal state (discreto e em modo claro)
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(() => getSupabaseCredentials().isConfigured);
   const [showDbConfigModal, setShowDbConfigModal] = useState(false);
   const [dbUrlInput, setDbUrlInput] = useState(() => getSupabaseCredentials().url || '');
@@ -85,7 +86,7 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         return;
       }
 
-      // 3. Fallback em memória ou LocalStorage caso Supabase esteja desconectado ou com erro
+      // 3. Fallback em memória ou LocalStorage caso Supabase esteja temporariamente indisponível
       let allFreelas = Array.isArray(freelancers) ? [...freelancers] : [];
       if (allFreelas.length === 0) {
         try {
@@ -128,19 +129,15 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         return;
       }
 
-      // 4. Diagnóstico preciso do motivo da falha
+      // 4. Mensagens claras e amigáveis de retorno
       if (authResult.reason === 'supabase_not_configured') {
-        setErrorMessage('O banco Supabase não está configurado neste navegador. Entre como Administrador primeiro para salvar as credenciais em Configurações.');
-      } else if (authResult.reason === 'database_error') {
-        setErrorMessage(`Erro ao consultar o banco Supabase: ${authResult.error || 'Falha de conexão'}.`);
-      } else if (authResult.reason === 'empty_table_or_rls') {
-        setErrorMessage('Nenhum prestador retornado pelo banco (a tabela freelancers está vazia ou bloqueada pelo RLS do Supabase). Desative o RLS da tabela freelancers no SQL Editor do Supabase.');
+        setErrorMessage('O banco de dados não está configurado neste navegador. Entre como Administrador primeiro para salvar as credenciais.');
       } else if (authResult.reason === 'wrong_password') {
         setErrorMessage('A senha informada está incorreta para este usuário.');
       } else if (authResult.reason === 'inactive_user') {
-        setErrorMessage('Este prestador está marcado como inativo no sistema.');
+        setErrorMessage('Este usuário está marcado como inativo no sistema.');
       } else if (authResult.reason === 'user_not_found') {
-        setErrorMessage(`Prestador com o usuário ou e-mail "${email}" não foi encontrado no cadastro.`);
+        setErrorMessage(`Usuário ou e-mail "${email}" não foi encontrado no sistema.`);
       } else {
         setErrorMessage('E-mail/usuário ou senha incorretos. Verifique suas credenciais.');
       }
@@ -152,59 +149,58 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+    <div className="min-h-screen w-full bg-gray-50 flex items-center justify-center p-4 relative overflow-hidden font-sans text-gray-800">
       
-      {/* Background Subtle Gradient Spheres */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-yellow-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Background Soft Glow Decoration */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-80 bg-gradient-to-b from-yellow-200/30 via-yellow-100/10 to-transparent blur-2xl pointer-events-none"></div>
 
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl relative z-10 flex flex-col gap-6">
+      <div className="w-full max-w-md bg-white border border-gray-200 rounded-3xl p-8 sm:p-10 shadow-xl shadow-gray-200/60 relative z-10 flex flex-col gap-6 animate-in fade-in-0 zoom-in-95">
         
         {/* Header / Brand */}
         <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-16 h-16 bg-gradient-to-tr from-yellow-400 to-yellow-500 rounded-2xl flex items-center justify-center p-3 shadow-lg shadow-yellow-500/20">
-            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+          <div className="w-14 h-14 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-2xl flex items-center justify-center p-2.5 shadow-md shadow-yellow-500/25">
+            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain drop-shadow-xs" />
           </div>
           
           <div>
-            <h1 className="font-title text-xl font-bold text-white tracking-wide">
+            <h1 className="font-title text-2xl font-black text-gray-950 tracking-tight">
               {companyInfo?.brandName || 'Matheus Raffa'}
             </h1>
-            <p className="text-xs font-semibold text-yellow-400/90 tracking-widest uppercase mt-0.5">
+            <span className="text-[10px] font-extrabold text-yellow-800 uppercase tracking-wider bg-yellow-100 border border-yellow-300/80 px-2.5 py-0.5 rounded-full inline-block mt-1">
               Sistema de Timesheet & Faturamento
-            </p>
+            </span>
           </div>
         </div>
 
-        {/* Form Card */}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-1">
           
           {errorMessage && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-xs font-semibold text-center animate-in fade-in-0 flex flex-col items-center gap-2">
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3.5 rounded-xl text-xs font-semibold text-center animate-in fade-in-0 flex flex-col items-center gap-2">
               <span>{errorMessage}</span>
               {!isSupabaseConfigured && (
                 <button
                   type="button"
                   onClick={() => setShowDbConfigModal(true)}
-                  className="mt-1 px-3.5 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
+                  className="mt-1 px-3 py-1 bg-yellow-400 hover:bg-yellow-500 text-gray-950 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-2xs transition-colors"
                 >
-                  <Server size={13} />
-                  <span>Configurar Supabase Agora</span>
+                  <Server size={12} />
+                  <span>Configurar Conexão</span>
                 </button>
               )}
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5" htmlFor="login-email">
-              <Mail size={13} className="text-yellow-400" />
+            <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5" htmlFor="login-email">
+              <Mail size={13} className="text-yellow-600" />
               <span>E-mail / Usuário</span>
             </label>
             <input 
               id="login-email"
               type="text" 
-              placeholder="contato@matheusraffa.com.br"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all font-medium"
+              placeholder="Digite seu e-mail ou usuário"
+              className="w-full bg-gray-50 hover:bg-white focus:bg-white border border-gray-300 focus:border-yellow-500 focus:ring-3 focus:ring-yellow-400/20 rounded-xl px-3.5 py-2.5 text-xs text-gray-900 placeholder-gray-400 font-medium transition-all focus:outline-none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -212,25 +208,35 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5" htmlFor="login-pass">
-              <Lock size={13} className="text-yellow-400" />
+            <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5" htmlFor="login-pass">
+              <Lock size={13} className="text-yellow-600" />
               <span>Senha de Acesso</span>
             </label>
-            <input 
-              id="login-pass"
-              type="password" 
-              placeholder="••••••••••••"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all font-medium"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <input 
+                id="login-pass"
+                type={showPassword ? 'text' : 'password'} 
+                placeholder="••••••••••••"
+                className="w-full bg-gray-50 hover:bg-white focus:bg-white border border-gray-300 focus:border-yellow-500 focus:ring-3 focus:ring-yellow-400/20 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-gray-900 placeholder-gray-400 font-medium transition-all focus:outline-none"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer p-0.5"
+                title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
           </div>
 
           <button 
             type="submit"
             disabled={isLoading}
-            className="w-full mt-2 py-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-yellow-500/10 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className="w-full mt-2 py-3 bg-yellow-400 hover:bg-yellow-500 text-gray-950 font-bold rounded-xl text-xs shadow-md shadow-yellow-400/25 flex items-center justify-center gap-2 transition-all cursor-pointer hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
           >
             {isLoading ? (
               <>
@@ -246,95 +252,72 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
           </button>
         </form>
 
-        {/* Footer info */}
-        <div className="border-t border-slate-800/80 pt-4 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="flex items-center gap-1">
-            <ShieldCheck size={13} className="text-emerald-500" />
-            Conexão Protegida
-          </span>
-          {isSupabaseConfigured ? (
-            <button
-              type="button"
-              onClick={() => setShowDbConfigModal(true)}
-              className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 cursor-pointer"
-              title="Clique para ver ou alterar credenciais do Supabase"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              Supabase Conectado
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowDbConfigModal(true)}
-              className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer underline"
-              title="Clique para configurar o Supabase neste navegador"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-              Supabase Offline (Configurar)
-            </button>
-          )}
+        {/* Clean Footer (Sem indicador de Supabase conectado) */}
+        <div className="border-t border-gray-100 pt-4 flex items-center justify-center text-[11px] text-gray-400 gap-1.5">
+          <ShieldCheck size={14} className="text-emerald-600" />
+          <span>Ambiente Seguro & Conexão Criptografada</span>
         </div>
 
       </div>
 
-      {/* Modal Rápido de Configuração do Supabase */}
+      {/* Modal de Configuração do Supabase (Modo Claro) */}
       {showDbConfigModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-750 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 text-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 text-gray-800">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <Server size={18} className="text-yellow-400" />
-                <h3 className="font-bold text-sm text-white">Configurar Conexão Supabase</h3>
+                <Server size={18} className="text-yellow-600" />
+                <h3 className="font-bold text-sm text-gray-950">Configurar Conexão Supabase</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowDbConfigModal(false)}
-                className="text-slate-400 hover:text-white cursor-pointer p-1"
+                className="text-gray-400 hover:text-gray-600 cursor-pointer p-1 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Insira a URL e a Chave Anônima (Anon Key) do seu projeto Supabase para habilitar a consulta direta de freelancers e dados em nuvem neste navegador.
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Insira a URL e a Chave Anônima do seu projeto Supabase para habilitar a sincronização em nuvem.
             </p>
 
             <form onSubmit={handleSaveQuickDb} className="flex flex-col gap-3 text-xs">
               <div className="flex flex-col gap-1">
-                <label className="font-semibold text-slate-300">URL do Projeto (VITE_SUPABASE_URL):</label>
+                <label className="font-bold text-gray-700">URL do Projeto (VITE_SUPABASE_URL):</label>
                 <input
                   type="text"
                   required
                   placeholder="https://xyzcompany.supabase.co"
                   value={dbUrlInput}
                   onChange={(e) => setDbUrlInput(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-yellow-400 font-mono"
+                  className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none focus:border-yellow-500 font-mono"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-semibold text-slate-300">Chave Anônima (VITE_SUPABASE_ANON_KEY):</label>
+                <label className="font-bold text-gray-700">Chave Anônima (VITE_SUPABASE_ANON_KEY):</label>
                 <input
                   type="password"
                   required
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
                   value={dbKeyInput}
                   onChange={(e) => setDbKeyInput(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-yellow-400 font-mono"
+                  className="bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:outline-none focus:border-yellow-500 font-mono"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => setShowDbConfigModal(false)}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+                  className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-950 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
                 >
                   <Server size={13} />
                   <span>Salvar & Conectar</span>
