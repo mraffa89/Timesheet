@@ -13,20 +13,25 @@ import {
   ChevronUp,
   BarChart3,
   Search,
-  Activity
+  Activity,
+  ArrowUpDown,
+  ArrowDown,
+  ArrowUp
 } from 'lucide-react';
 
 export default function Dashboard({ entries = [], clients = [], onNavigateToTab }) {
-  // 1. Filtro de Período ('current_month', 'prev_month', 'select_month', 'all', 'custom')
+  // 1. Filtro de Período exclusivo ('current_month', 'prev_month', 'select_month')
   const [periodFilter, setPeriodFilter] = useState('current_month');
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [customStartDate, setCustomStartDate] = useState('');
-  const [customEndDate, setCustomEndDate] = useState('');
 
-  // 2. Estado de Hover no Gráfico e Pesquisa de Clientes
+  // 2. Ordenação Global (Gráfico + Tabela)
+  const [sortBy, setSortBy] = useState('hours'); // 'hours' | 'billing'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' | 'asc'
+
+  // 3. Hover no Gráfico e Pesquisa de Clientes
   const [hoveredClientChart, setHoveredClientChart] = useState(null);
   const [clientSearch, setClientSearch] = useState('');
   const [expandedClientId, setExpandedClientId] = useState(null);
@@ -71,13 +76,15 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
     return '';
   };
 
-  const formatDateBR = (isoStr) => {
-    if (!isoStr) return '';
-    const parts = isoStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  // Helper para extrair iniciais limpas de um cliente (ex: Colégio Pedro e Rafael -> CP, Brasilis -> BR)
+  const getClientInitials = (name) => {
+    if (!name) return 'CL';
+    const clean = name.trim().replace(/[^\w\sÀ-ú]/gi, '');
+    const words = clean.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      return (words[0][0] + words[1][0]).toUpperCase();
     }
-    return isoStr;
+    return clean.slice(0, 2).toUpperCase();
   };
 
   // Meses únicos disponíveis
@@ -112,7 +119,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       .map(([value, label]) => ({ value, label }));
   }, [entries]);
 
-  // Intervalo de datas do período ativo
+  // Intervalo de datas do período ativo (Apenas Mês Atual, Mês Anterior ou Selecionar Mês)
   const { periodStart, periodEnd, periodLabel } = useMemo(() => {
     const now = new Date();
     const curYear = now.getFullYear();
@@ -145,39 +152,22 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       };
     }
 
-    if (periodFilter === 'select_month') {
-      if (!selectedMonth) {
-        return { periodStart: null, periodEnd: null, periodLabel: 'Selecione um mês' };
-      }
-      const [sYear, sMonth] = selectedMonth.split('-');
-      const start = `${selectedMonth}-01`;
-      const lastDay = new Date(parseInt(sYear, 10), parseInt(sMonth, 10), 0).getDate();
-      const end = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
-      const dateObj = new Date(parseInt(sYear, 10), parseInt(sMonth, 10) - 1, 1);
-      const monthName = dateObj.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-      return {
-        periodStart: start,
-        periodEnd: end,
-        periodLabel: monthName.charAt(0).toUpperCase() + monthName.slice(1)
-      };
+    // 'select_month'
+    if (!selectedMonth) {
+      return { periodStart: null, periodEnd: null, periodLabel: 'Selecione um mês' };
     }
-
-    if (periodFilter === 'custom') {
-      return {
-        periodStart: customStartDate || null,
-        periodEnd: customEndDate || null,
-        periodLabel: (customStartDate && customEndDate)
-          ? `${formatDateBR(customStartDate)} a ${formatDateBR(customEndDate)}`
-          : 'Período Personalizado'
-      };
-    }
-
+    const [sYear, sMonth] = selectedMonth.split('-');
+    const start = `${selectedMonth}-01`;
+    const lastDay = new Date(parseInt(sYear, 10), parseInt(sMonth, 10), 0).getDate();
+    const end = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+    const dateObj = new Date(parseInt(sYear, 10), parseInt(sMonth, 10) - 1, 1);
+    const monthName = dateObj.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     return {
-      periodStart: null,
-      periodEnd: null,
-      periodLabel: 'Todo o Período'
+      periodStart: start,
+      periodEnd: end,
+      periodLabel: monthName.charAt(0).toUpperCase() + monthName.slice(1)
     };
-  }, [periodFilter, selectedMonth, customStartDate, customEndDate]);
+  }, [periodFilter, selectedMonth]);
 
   // Filtra lançamentos dentro do período ativo
   const filteredEntries = useMemo(() => {
@@ -198,7 +188,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
   };
 
-  // 3. Cálculo do Histórico Médio de Consumo de Horas por Cliente (Todo o Histórico)
+  // 3. Cálculo do Histórico Médio de Consumo de Horas por Cliente
   const clientHistoricalStats = useMemo(() => {
     const map = {};
     (entries || []).forEach(e => {
@@ -236,23 +226,23 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
     return result;
   }, [entries]);
 
-  // 4. Cálculo Consolidado: Métricas do Período, Faturamento Real (Fixo + Extra) e Lista de Rentabilidade
+  // 4. Consolidação: Métricas do Período, Faturamento (Fixo + Extra) e Ordenação
   const {
     stats,
     profitabilityList,
     clientChartData
   } = useMemo(() => {
-    // 1. Horas totais gastas no período
+    // Horas totais do período
     const totalHours = filteredEntries.reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
 
-    // 2. Jobs únicos faturáveis
+    // Jobs únicos faturáveis
     const billableEntries = filteredEntries.filter(e => e.billable);
     const uniqueBillableDemands = new Set(
       billableEntries.map(e => (e.description || '').trim().toLowerCase())
     );
     const extraJobsCount = uniqueBillableDemands.size;
 
-    // 3. Mapeamento de horas por cliente no período
+    // Horas por cliente no período
     const clientStatsMap = {};
     (clients || []).forEach(c => {
       clientStatsMap[c.id] = {
@@ -283,7 +273,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       const billable = clientHours.billableHours;
       const total = clientHours.totalHours;
 
-      // REGRA: Mostrar somente clientes ativos ou que geraram horas no período
+      // Somente clientes ativos ou com horas consumidas no período
       const isClientActive = client.isActive !== false;
       const hasConsumedHours = total > 0;
 
@@ -302,18 +292,16 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       } else if (client.contractType === 'hourly') {
         variableBillingForClient = billable * hourlyRate;
       } else if (client.contractType === 'hybrid') {
-        // AJUSTE SOLICITADO: Em contratos mistos (fixo + extra), soma o valor fixo + o faturamento extra dos jobs
-        // para que a taxa efetiva e o retorno real não tenham divergência
+        // Misto: Soma Fixo + Faturamento Extra dos jobs
         fixedBillingForClient = fixedFee;
         variableBillingForClient = billable * hourlyRate;
       }
 
-      // Faturamento total do cliente
       const billingForClient = fixedBillingForClient + variableBillingForClient;
       totalFixedBilling += fixedBillingForClient;
       totalVariableBilling += variableBillingForClient;
 
-      // Cálculo de Rentabilidade / Taxa Efetiva Real
+      // Cálculo de Rentabilidade
       let effectiveRate = 0;
       let profitStatus = 'neutral';
       let statusLabel = 'Sem Horas';
@@ -339,7 +327,6 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
         statusLabel = 'Lucratividade Máxima';
       }
 
-      // Estatísticas históricas deste cliente
       const hist = clientHistoricalStats[client.id] || {
         totalHistoricalHours: total,
         monthsCount: 1,
@@ -349,6 +336,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       profitabilityData.push({
         clientId: client.id,
         clientName: client.name,
+        initials: getClientInitials(client.name),
         isActive: isClientActive,
         contractType: client.contractType,
         fixedFee,
@@ -368,15 +356,26 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       });
     });
 
-    // Ordenação: clientes com maior faturamento e maior volume de horas
-    profitabilityData.sort((a, b) => b.billing - a.billing || b.totalHoursSpent - a.totalHoursSpent);
+    // APLICAÇÃO DA ORDENAÇÃO DINÂMICA (Solicitada: Por Quantidade de Horas ou Faturamento, Crescente/Decrescente)
+    profitabilityData.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'hours') {
+        diff = a.totalHoursSpent - b.totalHoursSpent;
+        if (diff === 0) diff = a.billing - b.billing;
+      } else {
+        diff = a.billing - b.billing;
+        if (diff === 0) diff = a.totalHoursSpent - b.totalHoursSpent;
+      }
+      return sortOrder === 'desc' ? -diff : diff;
+    });
 
-    // Dados para o Gráfico de Colunas em Largura Total
+    // Gráfico segue rigorosamente a mesma ordenação
     const chartData = profitabilityData
       .filter(item => item.totalHoursSpent > 0 || item.historicalAvgHours > 0 || item.billing > 0)
       .map(item => ({
         id: item.clientId,
         name: item.clientName,
+        initials: item.initials,
         totalHours: item.totalHoursSpent,
         billableHours: item.billableHours,
         nonBillableHours: item.nonBillableHours,
@@ -401,7 +400,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
       profitabilityList: profitabilityData,
       clientChartData: chartData
     };
-  }, [filteredEntries, clients, clientHistoricalStats]);
+  }, [filteredEntries, clients, clientHistoricalStats, sortBy, sortOrder]);
 
   const getProfitabilityStyles = (status) => {
     switch (status) {
@@ -418,21 +417,20 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
     }
   };
 
-  // Filtragem por texto
+  // Filtragem por busca textual
   const filteredProfitabilityList = useMemo(() => {
     if (!clientSearch.trim()) return profitabilityList;
     const term = clientSearch.toLowerCase().trim();
     return profitabilityList.filter(c => c.clientName.toLowerCase().includes(term));
   }, [profitabilityList, clientSearch]);
 
-  // Cálculos do Gráfico de Colunas + Linha Média
+  // Escala Máxima do Gráfico
   const chartMaxHours = useMemo(() => {
     if (clientChartData.length === 0) return 10;
     const maxVal = Math.max(
       ...clientChartData.map(d => Math.max(d.totalHours, d.historicalAvgHours || 0)),
       5
     );
-    // Adiciona margem superior de 15% para que barras e linha fiquem confortáveis
     return Math.ceil(maxVal * 1.15);
   }, [clientChartData]);
 
@@ -446,35 +444,34 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
     return [...clientChartData].sort((a, b) => b.totalHours - a.totalHours)[0];
   }, [clientChartData]);
 
-  // Dimensões dinâmicas do SVG
-  const svgWidth = Math.max(760, clientChartData.length * 84);
-  const svgHeight = 280;
+  // Layout 100% Responsivo Sem Barra de Rolagem (viewBox fixo de 1000 unidades)
+  const svgViewBoxWidth = 1000;
+  const svgViewBoxHeight = 280;
   const plotPaddingLeft = 45;
   const plotPaddingRight = 35;
-  const plotPaddingTop = 30;
+  const plotPaddingTop = 32;
   const plotPaddingBottom = 45;
-  const plotWidth = svgWidth - plotPaddingLeft - plotPaddingRight;
-  const plotHeight = svgHeight - plotPaddingTop - plotPaddingBottom;
+  const plotWidth = svgViewBoxWidth - plotPaddingLeft - plotPaddingRight;
+  const plotHeight = svgViewBoxHeight - plotPaddingTop - plotPaddingBottom;
 
-  // Pontos das colunas e da linha média histórica
+  // Cálculo das Coordenadas (Colunas com Iniciais + Linha Média)
   const chartCoordinates = useMemo(() => {
     if (clientChartData.length === 0) return [];
-    const step = plotWidth / clientChartData.length;
-    const colW = Math.min(48, Math.max(26, step * 0.55));
+    const count = clientChartData.length;
+    const step = plotWidth / count;
+    // Largura proporcional e estreitada para caber confortavelmente sem rolagem
+    const colW = Math.max(14, Math.min(44, step * 0.52));
 
     return clientChartData.map((client, i) => {
       const centerX = plotPaddingLeft + (i + 0.5) * step;
       
-      // Altura da coluna de horas totais do período
       const colHeight = (client.totalHours / chartMaxHours) * plotHeight;
       const colY = plotPaddingTop + (plotHeight - colHeight);
 
-      // Proporções faturável vs não faturável
       const billableRatio = client.totalHours > 0 ? (client.billableHours / client.totalHours) : 0;
       const billableH = colHeight * billableRatio;
       const nonBillableH = colHeight - billableH;
 
-      // Posição Y da Linha Média Histórica
       const lineAvgY = plotPaddingTop + (plotHeight - ((client.historicalAvgHours || 0) / chartMaxHours) * plotHeight);
 
       return {
@@ -488,20 +485,18 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
         lineAvgY
       };
     });
-  }, [clientChartData, plotWidth, plotHeight, chartMaxHours, plotPaddingLeft, plotPaddingTop]);
+  }, [clientChartData, plotWidth, plotHeight, chartMaxHours]);
 
-  // String de pontos para o SVG polyline da Linha Média Histórica
   const averageLinePolyline = useMemo(() => {
     return chartCoordinates.map(c => `${c.centerX},${c.lineAvgY}`).join(' ');
   }, [chartCoordinates]);
 
-  // Linha horizontal média geral do período
   const periodAvgLineY = plotPaddingTop + (plotHeight - (periodAverageHours / chartMaxHours) * plotHeight);
 
   return (
     <div className="flex flex-col gap-6">
       
-      {/* 1. Cabeçalho com Título e Barra de Filtro de Período */}
+      {/* 1. Cabeçalho com Título, Filtro de Período e Barra de Ordenação */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
@@ -510,19 +505,21 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
           </div>
         </div>
 
-        {/* Barra de Filtro de Período (Mês Atual, Mês Anterior, Selecionar Mês, Todo o Período, Personalizado) */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-gray-50 text-gray-700 rounded-xl border border-gray-200">
-              <Calendar size={18} />
+        {/* Barra Unificada de Filtro de Período e Ordenação */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+          
+          {/* Período: Mês Atual, Mês Anterior, Selecionar Mês */}
+          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-gray-50 text-gray-700 rounded-xl border border-gray-200">
+                <Calendar size={18} />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Período</span>
+                <span className="text-sm font-bold text-gray-900">{periodLabel}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Período de Referência</span>
-              <span className="text-sm font-bold text-gray-900">{periodLabel}</span>
-            </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
             <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
               <button
                 type="button"
@@ -557,28 +554,6 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
               >
                 Selecionar Mês
               </button>
-              <button
-                type="button"
-                onClick={() => setPeriodFilter('all')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  periodFilter === 'all'
-                    ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-900 font-medium'
-                }`}
-              >
-                Todo o Período
-              </button>
-              <button
-                type="button"
-                onClick={() => setPeriodFilter('custom')}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  periodFilter === 'custom'
-                    ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-900 font-medium'
-                }`}
-              >
-                Personalizado
-              </button>
             </div>
 
             {periodFilter === 'select_month' && (
@@ -594,26 +569,62 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                 </select>
               </div>
             )}
-
-            {periodFilter === 'custom' && (
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs animate-in fade-in-0">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">De:</span>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium focus:outline-none focus:border-yellow-500"
-                />
-                <span className="text-[10px] font-bold text-gray-400 uppercase">Até:</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="bg-white border border-gray-200 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium focus:outline-none focus:border-yellow-500"
-                />
-              </div>
-            )}
           </div>
+
+          {/* CONTROLE DE ORDENAÇÃO (Gráfico + Tabela) */}
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end border-t xl:border-t-0 pt-3 xl:pt-0 border-gray-100">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 font-semibold mr-1">
+              <ArrowUpDown size={14} className="text-gray-400" />
+              <span>Ordenar por:</span>
+            </div>
+
+            {/* Métrica de Ordenação: Horas vs Faturamento */}
+            <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setSortBy('hours')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  sortBy === 'hours'
+                    ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Horas Gastas
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortBy('billing')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  sortBy === 'billing'
+                    ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Faturamento (R$)
+              </button>
+            </div>
+
+            {/* Direção: Crescente ou Decrescente */}
+            <button
+              type="button"
+              onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+              className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              title={sortOrder === 'desc' ? 'Ordenação Decrescente (Maior primeiro)' : 'Ordenação Crescente (Menor primeiro)'}
+            >
+              {sortOrder === 'desc' ? (
+                <>
+                  <ArrowDown size={13} className="text-yellow-600" />
+                  <span>Decrescente</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUp size={13} className="text-yellow-600" />
+                  <span>Crescente</span>
+                </>
+              )}
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -677,23 +688,24 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
 
       </div>
 
-      {/* 3. GRÁFICO EXCLUSIVO DE COLUNAS COM LINHA MÉDIA HISTÓRICA */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex flex-col gap-5">
+      {/* 3. GRÁFICO EXCLUSIVO DE COLUNAS (COM INICIAIS, SEM ROLAGEM, LINHA MÉDIA HISTÓRICA) */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
         
-        {/* Cabeçalho do Gráfico e Legenda Integrada */}
+        {/* Cabeçalho do Gráfico e Legenda */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 size={18} className="text-yellow-600" />
-              <h3 className="font-title text-base font-bold text-gray-900">Consumo de Horas vs. Histórico Médio por Cliente</h3>
+              <h3 className="font-title text-base font-bold text-gray-900">
+                Consumo de Horas vs. Histórico Médio por Cliente
+              </h3>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Colunas representam as horas gastas no período ({periodLabel}), e a linha traça a média histórica de consumo de cada cliente.
+              Ordenado por <strong>{sortBy === 'hours' ? 'horas gastas' : 'faturamento'}</strong> ({sortOrder === 'desc' ? 'maior para menor' : 'menor para maior'}). As iniciais na base identificam cada conta.
             </p>
           </div>
 
-          {/* Legenda dos Elementos do Gráfico */}
-          <div className="flex flex-wrap items-center gap-3.5 text-xs text-gray-600 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-150">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600 bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-150">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-yellow-500" />
               <span className="font-medium text-[11px]">Horas Faturáveis</span>
@@ -706,34 +718,34 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
               <div className="w-3.5 h-1 bg-indigo-600 rounded-full flex items-center justify-center">
                 <span className="w-1.5 h-1.5 rounded-full bg-white ring-1 ring-indigo-600" />
               </div>
-              <span className="font-bold text-indigo-700 text-[11px]">Média Histórica do Cliente</span>
+              <span className="font-bold text-indigo-700 text-[11px]">Média Histórica</span>
             </div>
             <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
               <div className="w-3 h-0 border-b border-dashed border-gray-400" />
-              <span className="text-gray-500 text-[11px]">Média Geral: <strong>{periodAverageHours.toFixed(1).replace('.', ',')}h</strong></span>
+              <span className="text-gray-500 text-[11px]">Média do Mês: <strong>{periodAverageHours.toFixed(1).replace('.', ',')}h</strong></span>
             </div>
           </div>
         </div>
 
-        {/* Resumo Rápido de Indicadores do Gráfico */}
+        {/* Resumo Rápido */}
         {clientChartData.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50/70 p-3 rounded-xl border border-gray-100 text-xs">
             <div>
               <span className="text-[10px] text-gray-400 font-semibold uppercase block">Maior Demandante</span>
               <span className="font-bold text-gray-900 truncate block" title={topDemander?.name}>
-                {topDemander?.name || 'N/A'}
+                {topDemander ? `${topDemander.name} (${topDemander.initials})` : 'N/A'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] text-gray-400 font-semibold uppercase block">Horas do Pico</span>
+              <span className="text-[10px] text-gray-400 font-semibold uppercase block">Pico de Horas</span>
               <span className="font-bold text-gray-900">
                 {topDemander ? `${topDemander.totalHours.toFixed(1).replace('.', ',')}h` : '0h'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] text-gray-400 font-semibold uppercase block">Média do Período</span>
+              <span className="text-[10px] text-gray-400 font-semibold uppercase block">Média por Cliente</span>
               <span className="font-bold text-gray-900">
-                {periodAverageHours.toFixed(1).replace('.', ',')}h / cliente
+                {periodAverageHours.toFixed(1).replace('.', ',')}h
               </span>
             </div>
             <div>
@@ -746,7 +758,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
           </div>
         )}
 
-        {/* Gráfico SVG de Colunas + Linha Média */}
+        {/* ÁREA DO GRÁFICO 100% RESPONSIVA (SEM BARRA DE ROLAGEM) */}
         {clientChartData.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
             <Clock className="text-gray-300" size={36} />
@@ -756,18 +768,20 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
             </p>
           </div>
         ) : (
-          <div className="relative w-full overflow-x-auto pb-4">
+          <div className="relative w-full overflow-hidden">
             
-            {/* Popover de Detalhes no Hover */}
+            {/* Popover no Hover */}
             {hoveredClientChart && (
               <div 
-                className="absolute z-30 bg-gray-950 text-white rounded-xl p-3 shadow-xl pointer-events-none text-xs flex flex-col gap-1 border border-gray-800 animate-in fade-in-0"
+                className="absolute z-30 bg-gray-950 text-white rounded-xl p-3 shadow-xl pointer-events-none text-xs flex flex-col gap-1 border border-gray-800 animate-in fade-in-0 -translate-x-1/2"
                 style={{
-                  left: Math.min(hoveredClientChart.x, svgWidth - 220),
-                  top: Math.max(10, hoveredClientChart.y - 100)
+                  left: `${(hoveredClientChart.centerX / svgViewBoxWidth) * 100}%`,
+                  top: '10px'
                 }}
               >
-                <div className="font-bold text-sm text-yellow-400">{hoveredClientChart.client.name}</div>
+                <div className="font-bold text-sm text-yellow-400">
+                  {hoveredClientChart.client.name} ({hoveredClientChart.client.initials})
+                </div>
                 <div className="flex items-center justify-between gap-4 text-gray-300">
                   <span>Horas no Período:</span>
                   <strong className="text-white">{hoveredClientChart.client.totalHours.toFixed(1).replace('.', ',')}h</strong>
@@ -775,20 +789,24 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                 <div className="text-[10px] text-gray-400 pl-2 border-l border-gray-700">
                   {hoveredClientChart.client.billableHours.toFixed(1).replace('.', ',')}h faturáveis • {hoveredClientChart.client.nonBillableHours.toFixed(1).replace('.', ',')}h internas
                 </div>
-                <div className="flex items-center justify-between gap-4 text-indigo-300 border-t border-gray-800 pt-1 mt-0.5">
+                <div className="flex items-center justify-between gap-4 text-yellow-500 font-semibold border-t border-gray-800 pt-1 mt-0.5">
+                  <span>Faturamento:</span>
+                  <span>{formatCurrency(hoveredClientChart.client.billing)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 text-indigo-300">
                   <span>Média Histórica:</span>
                   <strong className="text-indigo-400">{hoveredClientChart.client.historicalAvgHours.toFixed(1).replace('.', ',')}h/mês</strong>
                 </div>
                 <div className="text-[10px] text-gray-400">
-                  Total acumulado: {hoveredClientChart.client.totalHistoricalHours.toFixed(1).replace('.', ',')}h ({hoveredClientChart.client.historicalMonthsCount} {hoveredClientChart.client.historicalMonthsCount === 1 ? 'mês' : 'meses'})
+                  Total histórico: {hoveredClientChart.client.totalHistoricalHours.toFixed(1).replace('.', ',')}h ({hoveredClientChart.client.historicalMonthsCount} {hoveredClientChart.client.historicalMonthsCount === 1 ? 'mês' : 'meses'})
                 </div>
               </div>
             )}
 
+            {/* SVG Responsivo com viewBox - Ajuste 100% sem Scrollbar */}
             <svg 
-              width={svgWidth} 
-              height={svgHeight} 
-              className="overflow-visible select-none"
+              viewBox={`0 0 ${svgViewBoxWidth} ${svgViewBoxHeight}`}
+              className="w-full h-auto overflow-visible select-none"
             >
               {/* Linhas de Grade e Escala Y */}
               {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -799,7 +817,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                     <line 
                       x1={plotPaddingLeft} 
                       y1={y} 
-                      x2={svgWidth - plotPaddingRight} 
+                      x2={svgViewBoxWidth - plotPaddingRight} 
                       y2={y} 
                       stroke="#f1f5f9" 
                       strokeWidth="1.5" 
@@ -819,20 +837,20 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                 );
               })}
 
-              {/* Linha Média Geral do Período (Tracejada Cinza Escuro) */}
+              {/* Linha Média Geral do Período */}
               {periodAverageHours > 0 && (
                 <g>
                   <line 
                     x1={plotPaddingLeft} 
                     y1={periodAvgLineY} 
-                    x2={svgWidth - plotPaddingRight} 
+                    x2={svgViewBoxWidth - plotPaddingRight} 
                     y2={periodAvgLineY} 
                     stroke="#94a3b8" 
                     strokeWidth="1.5" 
                     strokeDasharray="4 4" 
                   />
                   <text 
-                    x={svgWidth - plotPaddingRight} 
+                    x={svgViewBoxWidth - plotPaddingRight} 
                     y={periodAvgLineY - 5} 
                     textAnchor="end" 
                     fontSize="9" 
@@ -844,19 +862,15 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                 </g>
               )}
 
-              {/* COLUNAS DE HORAS POR CLIENTE */}
+              {/* COLUNAS DE HORAS COM INICIAIS NO EIXO X */}
               {chartCoordinates.map((coord) => {
                 const isHovered = hoveredClientChart?.client.id === coord.client.id;
 
                 return (
                   <g 
                     key={coord.client.id}
-                    className="cursor-pointer group"
-                    onMouseEnter={() => setHoveredClientChart({
-                      client: coord.client,
-                      x: coord.centerX,
-                      y: coord.colY
-                    })}
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredClientChart(coord)}
                     onMouseLeave={() => setHoveredClientChart(null)}
                   >
                     {/* Barra Não-Faturável (Cinza) */}
@@ -867,7 +881,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                         width={coord.colW} 
                         height={coord.nonBillableH} 
                         fill={isHovered ? "#64748b" : "#94a3b8"} 
-                        rx="4"
+                        rx="3"
                         className="transition-colors duration-200"
                       />
                     )}
@@ -880,12 +894,11 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                         width={coord.colW} 
                         height={coord.billableH} 
                         fill={isHovered ? "#d97706" : "#eab308"} 
-                        rx="4"
+                        rx="3"
                         className="transition-colors duration-200"
                       />
                     )}
 
-                    {/* Caso tenha 0 horas no período */}
                     {coord.client.totalHours === 0 && (
                       <line 
                         x1={coord.centerX - coord.colW / 4} 
@@ -898,7 +911,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                       />
                     )}
 
-                    {/* Rótulo de Valor de Horas no Topo da Coluna */}
+                    {/* Valor de Horas no Topo */}
                     <text 
                       x={coord.centerX} 
                       y={Math.max(plotPaddingTop - 6, coord.colY - 6)} 
@@ -910,28 +923,25 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                       {coord.client.totalHours > 0 ? `${coord.client.totalHours.toFixed(1).replace('.', ',')}h` : '0h'}
                     </text>
 
-                    {/* Nome do Cliente no Eixo X */}
+                    {/* INICIAIS DO CLIENTE NO EIXO X (Solicitado: CO, BL, DA, etc.) */}
                     <text 
                       x={coord.centerX} 
                       y={plotPaddingTop + plotHeight + 18} 
                       textAnchor="middle" 
                       fontSize="11" 
-                      fill={isHovered ? "#0f172a" : "#64748b"} 
-                      fontWeight={isHovered ? "bold" : "600"}
-                      className="transition-colors"
+                      fill={isHovered ? "#0f172a" : "#475569"} 
+                      fontWeight="bold"
+                      className="transition-colors font-title"
                     >
-                      {coord.client.name.length > 12 
-                        ? `${coord.client.name.slice(0, 11)}...` 
-                        : coord.client.name}
+                      {coord.client.initials}
                     </text>
                   </g>
                 );
               })}
 
-              {/* LINHA MÉDIA HISTÓRICA DO CLIENTE (Traçado Índigo Contínuo + Marcadores) */}
+              {/* LINHA MÉDIA HISTÓRICA DO CLIENTE (Traçado Índigo + Marcadores) */}
               {chartCoordinates.length > 0 && (
                 <g>
-                  {/* Linha de Traçado */}
                   <polyline 
                     points={averageLinePolyline} 
                     fill="none" 
@@ -939,30 +949,23 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                     strokeWidth="2.5" 
                     strokeLinecap="round" 
                     strokeLinejoin="round" 
-                    className="drop-shadow-xs"
                   />
 
-                  {/* Pontos da Linha Média para cada Cliente */}
                   {chartCoordinates.map((coord) => {
                     const isHovered = hoveredClientChart?.client.id === coord.client.id;
                     return (
-                      <g key={`pt-${coord.client.id}`}>
-                        <circle 
-                          cx={coord.centerX} 
-                          cy={coord.lineAvgY} 
-                          r={isHovered ? "6" : "4.5"} 
-                          fill="#ffffff" 
-                          stroke="#4f46e5" 
-                          strokeWidth={isHovered ? "3.5" : "2.5"} 
-                          className="transition-all duration-200 cursor-pointer"
-                          onMouseEnter={() => setHoveredClientChart({
-                            client: coord.client,
-                            x: coord.centerX,
-                            y: coord.colY
-                          })}
-                          onMouseLeave={() => setHoveredClientChart(null)}
-                        />
-                      </g>
+                      <circle 
+                        key={`pt-${coord.client.id}`}
+                        cx={coord.centerX} 
+                        cy={coord.lineAvgY} 
+                        r={isHovered ? "6" : "4"} 
+                        fill="#ffffff" 
+                        stroke="#4f46e5" 
+                        strokeWidth={isHovered ? "3.5" : "2.5"} 
+                        className="transition-all duration-200 cursor-pointer"
+                        onMouseEnter={() => setHoveredClientChart(coord)}
+                        onMouseLeave={() => setHoveredClientChart(null)}
+                      />
                     );
                   })}
                 </g>
@@ -973,7 +976,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
 
       </div>
 
-      {/* 4. FATURAMENTO & RETORNO POR CLIENTE (100% WIDTH COM SOMA REAL FIXO + EXTRA) */}
+      {/* 4. FATURAMENTO & RETORNO POR CLIENTE (100% WIDTH, ORDENADA DINAMICAMENTE) */}
       <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex flex-col gap-4">
         
         {/* Cabeçalho da Lista e Barra de Busca */}
@@ -986,7 +989,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Consolidando fee fixo + jobs extras de forma unificada, garantindo a exatidão da taxa horária efetiva e do retorno real.
+              Ordenado por <strong>{sortBy === 'hours' ? 'horas gastas' : 'faturamento'}</strong> ({sortOrder === 'desc' ? 'maior para menor' : 'menor para maior'}). Soma completa de fee fixo + jobs extras.
             </p>
           </div>
 
@@ -1053,10 +1056,10 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                   {/* Linha Principal do Cliente */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
                     
-                    {/* Info do Cliente */}
+                    {/* Info do Cliente com Iniciais e Nome */}
                     <div className="flex items-center gap-3 min-w-[220px]">
                       <div className="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-bold font-title text-xs shrink-0">
-                        {c.clientName.slice(0, 2).toUpperCase()}
+                        {c.initials}
                       </div>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
