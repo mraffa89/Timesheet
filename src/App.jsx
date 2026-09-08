@@ -850,8 +850,11 @@ function App() {
         userSession={userSession}
         tasks={freelancerTasks}
         clients={clients}
+        freelancers={freelancers}
         categories={serviceCategories}
         onUpdateTask={handleUpdateFreelancerTask}
+        onUpdateFreelancer={handleUpdateFreelancer}
+        onUpdateSession={setUserSession}
         onLogout={handleLogout}
         companyInfo={companyInfo}
       />
