@@ -108,15 +108,15 @@ export async function generateInvoicePdf({
     doc.text(`${company.phone}  |  ${company.city || ''}`, companyStartX, 36);
   }
 
-  // Document Title (Top Right) – Badge "TIMESHEET"
+  // Document Title (Top Right) – Badge "TIMESHEET" (100% Preto e Branco / Monocromático)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.setTextColor(120, 80, 0);
+  doc.setTextColor(50, 50, 50);
   const badgeText = 'TIMESHEET';
   const badgeWidth = doc.getTextWidth(badgeText) + 6;
   const badgeX = rightX - badgeWidth;
-  doc.setFillColor(255, 247, 220);
-  doc.setDrawColor(200, 170, 70);
+  doc.setFillColor(245, 245, 245);
+  doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.roundedRect(badgeX, 14, badgeWidth, 5.5, 1, 1, 'FD');
   doc.text(badgeText, badgeX + 3, 17.8);
@@ -274,8 +274,9 @@ export async function generateInvoicePdf({
   const payInfoX = marginX;
 
   if (asaasBilling) {
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(200, 215, 230);
+    // 100% Preto e Branco / Monocromático (sem azul)
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(210, 210, 210);
     doc.setLineWidth(0.3);
     doc.roundedRect(payInfoX, boxesTopY, payBoxWidth, summaryBoxHeight, 2, 2, 'FD');
 
@@ -291,19 +292,19 @@ export async function generateInvoicePdf({
     const textOffset = qrRendered ? qrSize + 5.5 : 4;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(20, 20, 20);
     doc.text('Pagamento via PIX ou Boleto (Asaas)', payInfoX + textOffset, boxesTopY + 7);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.setTextColor(71, 85, 105);
+    doc.setTextColor(70, 70, 70);
     doc.text('Escaneie o QR Code ao lado para pagar via PIX.', payInfoX + textOffset, boxesTopY + 12);
     doc.text(`Vencimento: ${dueDateStr}`, payInfoX + textOffset, boxesTopY + 17);
 
     if (asaasBilling.invoiceUrl) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      doc.setTextColor(30, 58, 138);
+      doc.setTextColor(30, 30, 30);
       const shortUrl = asaasBilling.invoiceUrl.length > 42 ? asaasBilling.invoiceUrl.substring(0, 40) + '...' : asaasBilling.invoiceUrl;
       doc.textWithLink(`Fatura Online: ${shortUrl}`, payInfoX + textOffset, boxesTopY + 23, { url: asaasBilling.invoiceUrl });
     }

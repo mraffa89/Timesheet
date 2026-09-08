@@ -127,15 +127,20 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
     if (!selectedMonth) return [];
 
     return clients.filter(c => {
-      const clientMonthEntries = entries.filter(e => {
+      const clientBillableMonthEntries = entries.filter(e => {
         if (e.clientId !== c.id) return false;
+        // Apenas lançamentos faturáveis (billables)
+        const isBillable = e.billable === true || String(e.billable).toLowerCase() === 'true' || e.isBillable === true;
+        if (!isBillable) return false;
         const dateStr = e.deliveryDate || e.requestDate;
         if (!dateStr) return false;
         const yearMonth = getYearMonth(dateStr);
-        return yearMonth === selectedMonth;
+        if (yearMonth !== selectedMonth) return false;
+        const hours = parseFloat(e.hours) || 0;
+        return hours > 0;
       });
 
-      return clientMonthEntries.length > 0;
+      return clientBillableMonthEntries.length > 0;
     });
   };
 
@@ -144,28 +149,30 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
   // Data de vencimento personalizável (formato YYYY-MM-DD)
   const [customDueDate, setCustomDueDate] = useState('');
 
-  // Calcula o vencimento padrão (dia 10 do mês seguinte ao mês da fatura)
+  // Calcula o vencimento padrão (sempre no mês subsequente à leitura dos dados, ex: Agosto -> Outubro, dia 10)
   const getDefaultDueDateForMonth = (monthKey) => {
     if (monthKey && monthKey.includes('-')) {
       const parts = monthKey.split('-');
       let year = parseInt(parts[0], 10);
       let month = parseInt(parts[1], 10);
-      let nextMonth = month + 1;
-      let nextYear = year;
-      if (nextMonth > 12) {
-        nextMonth = 1;
-        nextYear += 1;
+      let targetMonth = month + 2;
+      let targetYear = year;
+      if (targetMonth > 12) {
+        targetMonth = targetMonth - 12;
+        targetYear += 1;
       }
-      return `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
+      return `${targetYear}-${String(targetMonth).padStart(2, '0')}-10`;
     }
     const now = new Date();
-    let nextMonth = now.getMonth() + 2;
-    let nextYear = now.getFullYear();
-    if (nextMonth > 12) {
-      nextMonth = 1;
-      nextYear += 1;
+    let curMonth = now.getMonth() + 1;
+    let curYear = now.getFullYear();
+    let targetMonth = curMonth + 2;
+    let targetYear = curYear;
+    if (targetMonth > 12) {
+      targetMonth = targetMonth - 12;
+      targetYear += 1;
     }
-    return `${nextYear}-${String(nextMonth).padStart(2, '0')}-10`;
+    return `${targetYear}-${String(targetMonth).padStart(2, '0')}-10`;
   };
 
   // Formata a data ISO (YYYY-MM-DD) para exibição brasileira (DD/MM/AAAA)
@@ -646,18 +653,18 @@ Atenciosamente,
             )}
           </select>
 
-          {/* Campo para alterar a data de vencimento */}
+          {/* Campo para alterar a data de vencimento (Tons de cinza) */}
           {selectedMonth && (
-            <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg py-1 px-3 shadow-2xs">
-              <span className="text-xs font-bold text-amber-900 flex items-center gap-1">
-                <Calendar size={13} className="text-amber-700 shrink-0" />
+            <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-lg py-1 px-3 shadow-2xs">
+              <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                <Calendar size={13} className="text-gray-500 shrink-0" />
                 <span>Vencimento:</span>
               </span>
               <input 
                 type="date" 
                 value={customDueDate || getDefaultDueDateForMonth(selectedMonth)}
                 onChange={(e) => handleDueDateChange(e.target.value)}
-                className="bg-white border border-amber-300 rounded px-2 py-0.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-yellow-500 cursor-pointer"
+                className="bg-white border border-gray-300 rounded px-2 py-0.5 text-xs font-bold text-gray-800 focus:outline-none focus:border-gray-500 focus:ring-1 focus:ring-gray-400 cursor-pointer"
                 title="Alterar data de vencimento para o demonstrativo (PDF) e cobrança Asaas"
               />
             </div>
@@ -716,7 +723,7 @@ Atenciosamente,
 
                 {/* Right Side: Document Title & Period */}
                 <div className="flex flex-col sm:items-end text-left sm:text-right gap-1 max-w-sm">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-700 bg-yellow-100 px-3 py-1 rounded-md border border-yellow-300 inline-block">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-700 bg-gray-100 px-3 py-1 rounded-md border border-gray-300 inline-block">
                     Timesheet
                   </span>
                   <h3 className="font-title text-xl font-extrabold text-gray-900 uppercase mt-1">
@@ -726,7 +733,7 @@ Atenciosamente,
                   <div className="text-[11px] text-gray-500 font-medium flex flex-wrap sm:justify-end gap-x-3 gap-y-0.5 mt-1.5">
                     <span>Emissão: <strong className="text-gray-900">{issueDateStr}</strong></span>
                     <span className="text-gray-300">|</span>
-                    <span>Vencimento: <strong className="text-yellow-700 font-bold">{dueDateStr}</strong></span>
+                    <span>Vencimento: <strong className="text-gray-900 font-bold">{dueDateStr}</strong></span>
                   </div>
                 </div>
               </div>
@@ -844,22 +851,22 @@ Atenciosamente,
                 <div className="border-t-2 border-gray-200 pt-6 flex flex-col gap-3">
                   
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <span className="text-yellow-500 font-black text-xs">›</span> Resumo Financeiro
+                    <span className="text-gray-400 font-black text-xs">›</span> Resumo Financeiro
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-5 items-stretch">
                     
-                    {/* LEFT BOX: Payment / Asaas PIX */}
+                    {/* LEFT BOX: Payment / Asaas PIX (100% Preto e Branco / Neutro) */}
                     <div className="flex-grow min-w-0">
                       {asaasBilling ? (
-                        <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-5 flex flex-col gap-4 h-full">
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 flex flex-col gap-4 h-full">
                           <div className="flex items-start gap-4">
                             {/* QR Code */}
-                            <div className="w-36 h-36 bg-white border border-blue-200 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-sm">
+                            <div className="w-36 h-36 bg-white border border-gray-200 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-sm">
                               {asaasBilling.qrCodeImage ? (
                                 <img src={asaasBilling.qrCodeImage} alt="QR Code PIX Asaas" className="w-full h-full object-contain" />
                               ) : (
-                                <svg className="w-full h-full text-blue-900" viewBox="0 0 100 100" fill="currentColor">
+                                <svg className="w-full h-full text-gray-900" viewBox="0 0 100 100" fill="currentColor">
                                   <rect x="10" y="10" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="6" />
                                   <rect x="15" y="15" width="15" height="15" />
                                   <rect x="65" y="10" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="6" />
@@ -878,8 +885,8 @@ Atenciosamente,
 
                             {/* Payment Details */}
                             <div className="flex flex-col gap-1.5 flex-grow text-xs">
-                              <div className="flex items-center gap-1.5 text-blue-900 font-bold">
-                                <CheckCircle2 size={16} className="text-green-600 shrink-0" />
+                              <div className="flex items-center gap-1.5 text-gray-950 font-bold">
+                                <CheckCircle2 size={16} className="text-gray-700 shrink-0" />
                                 <span>Cobrança Integrada ao Asaas</span>
                               </div>
                               <p className="text-[11px] text-gray-600 leading-snug">
@@ -887,7 +894,7 @@ Atenciosamente,
                               </p>
                               <div className="flex items-center gap-1.5 text-[11px] mt-0.5">
                                 <span className="font-semibold text-gray-700">Vencimento:</span>
-                                <span className="text-blue-950 font-bold bg-white px-2.5 py-0.5 rounded border border-blue-200">
+                                <span className="text-gray-900 font-bold bg-white px-2.5 py-0.5 rounded border border-gray-300">
                                   {dueDateStr}
                                 </span>
                               </div>
@@ -897,7 +904,7 @@ Atenciosamente,
                                   href={asaasBilling.invoiceUrl} 
                                   target="_blank" 
                                   rel="noopener noreferrer" 
-                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline mt-1"
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-900 hover:text-black underline mt-1"
                                 >
                                   <span>Acessar Fatura Completa Online</span>
                                   <ExternalLink size={12} />
@@ -905,8 +912,8 @@ Atenciosamente,
                               )}
 
                               {asaasBilling.invoiceScheduled && (
-                                <div className="flex items-center gap-1.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md font-semibold mt-1">
-                                  <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-800 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-md font-semibold mt-1">
+                                  <CheckCircle2 size={13} className="text-gray-700 shrink-0" />
                                   <span>NFS-e agendada (emissão automática ao receber pagamento)</span>
                                 </div>
                               )}
@@ -915,7 +922,7 @@ Atenciosamente,
 
                           {/* PIX Copia e Cola */}
                           {asaasBilling.pixCopiaCola && (
-                            <div className="flex items-center gap-2 bg-white border border-blue-200 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
                               <input 
                                 type="text" 
                                 readOnly 
@@ -924,10 +931,10 @@ Atenciosamente,
                               />
                               <button 
                                 onClick={handleCopyPix}
-                                className="flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:text-blue-900 cursor-pointer shrink-0"
+                                className="flex items-center gap-1 text-[10px] font-bold text-gray-800 hover:text-black cursor-pointer shrink-0"
                                 title="Copiar Código PIX"
                               >
-                                {copiedPix ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+                                {copiedPix ? <Check size={12} className="text-gray-700" /> : <Copy size={12} />}
                                 <span>{copiedPix ? 'Copiado!' : 'Copiar PIX'}</span>
                               </button>
                             </div>
@@ -937,11 +944,11 @@ Atenciosamente,
                         <div className="flex flex-col justify-between gap-3 p-5 bg-gray-50 border border-gray-200 rounded-xl h-full">
                           <p className="text-xs text-gray-600">Faturamento via link de cobrança digital (Asaas / PIX / Boleto bancário).</p>
                           <p className="text-xs font-bold text-gray-800">
-                            Vencimento: <span className="text-yellow-700 bg-yellow-50 px-2.5 py-0.5 rounded border border-yellow-200">{dueDateStr}</span>
+                            Vencimento: <span className="text-gray-900 bg-gray-100 px-2.5 py-0.5 rounded border border-gray-300">{dueDateStr}</span>
                           </p>
                           <button 
                             onClick={handleGenerateAsaasBilling}
-                            className="mt-2 inline-flex items-center gap-1.5 self-start text-xs text-blue-700 hover:text-blue-900 font-bold cursor-pointer"
+                            className="mt-2 inline-flex items-center gap-1.5 self-start text-xs text-gray-800 hover:text-black font-bold cursor-pointer"
                           >
                             <CreditCard size={14} />
                             <span>Clique em "Gerar Cobrança Asaas" para anexar o QR Code PIX aqui</span>
@@ -967,7 +974,7 @@ Atenciosamente,
 
                         <div className="flex justify-between items-center border-t border-gray-200 pt-3 text-sm font-bold text-gray-950">
                           <span>Valor Total Faturado:</span>
-                          <span className="text-yellow-600 font-title text-xl font-black">{formatCurrency(financials.totalAmount)}</span>
+                          <span className="text-gray-950 font-title text-xl font-black">{formatCurrency(financials.totalAmount)}</span>
                         </div>
                       </div>
                     </div>
