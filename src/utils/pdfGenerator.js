@@ -385,7 +385,11 @@ export async function generatePayrollPdf({
   totalAmount = 0,
   periodLabel = '',
   company = {},
-  getClientName = (id) => id
+  getClientName = (id) => id,
+  isPaid = false,
+  paymentIds = [],
+  paymentDates = [],
+  paymentReceiptUrls = []
 }) {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -397,6 +401,22 @@ export async function generatePayrollPdf({
   const marginX = 15;
   const contentWidth = pageWidth - marginX * 2; // 180mm
   const rightX = marginX + contentWidth;
+
+  // Analisa se todas as tarefas estão quitadas / pagas
+  const allPaid = isPaid || (tasks.length > 0 && tasks.every(t => t.status === 'paid'));
+  const hasAnyPaid = allPaid || tasks.some(t => t.status === 'paid');
+
+  const collectedPaymentIds = paymentIds.length > 0 
+    ? paymentIds 
+    : Array.from(new Set(tasks.map(t => t.paymentId).filter(Boolean)));
+
+  const collectedPaymentDates = paymentDates.length > 0 
+    ? paymentDates 
+    : Array.from(new Set(tasks.map(t => t.paymentDate).filter(Boolean)));
+
+  const collectedReceiptUrls = paymentReceiptUrls.length > 0 
+    ? paymentReceiptUrls 
+    : Array.from(new Set(tasks.map(t => t.paymentReceiptUrl).filter(Boolean)));
 
   // ═══════ SEÇÃO 1: HEADER (EMPRESA + LOGO + METADADOS) ═══════
   const logoData = await loadGrayscaleImage('/logo.png');
@@ -429,15 +449,22 @@ export async function generatePayrollPdf({
     doc.text(`${company.phone}  |  ${company.city || ''}`, companyStartX, 36);
   }
 
-  // Document Title (Top Right) – Badge "FECHAMENTO PRESTADOR"
+  // Document Title (Top Right) – Badge "FECHAMENTO PRESTADOR" ou "FECHAMENTO QUITADO (PIX)"
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
-  doc.setTextColor(50, 50, 50);
-  const badgeText = 'FECHAMENTO PRESTADOR';
+  const badgeText = allPaid ? 'FECHAMENTO QUITADO (PIX)' : 'FECHAMENTO PRESTADOR';
   const badgeWidth = doc.getTextWidth(badgeText) + 6;
   const badgeX = rightX - badgeWidth;
-  doc.setFillColor(245, 245, 245);
-  doc.setDrawColor(200, 200, 200);
+
+  if (allPaid) {
+    doc.setFillColor(30, 30, 30);
+    doc.setTextColor(255, 255, 255);
+    doc.setDrawColor(30, 30, 30);
+  } else {
+    doc.setFillColor(245, 245, 245);
+    doc.setTextColor(50, 50, 50);
+    doc.setDrawColor(200, 200, 200);
+  }
   doc.setLineWidth(0.3);
   doc.roundedRect(badgeX, 14, badgeWidth, 5.5, 1, 1, 'FD');
   doc.text(badgeText, badgeX + 3, 17.8);
@@ -498,6 +525,7 @@ export async function generatePayrollPdf({
   doc.text(`Chave PIX: ${targetPix}`, rightX - 5, prestadorTopY + 12, { align: 'right' });
   doc.text(`Valor da Hora Técnica: ${targetRate}`, rightX - 5, prestadorTopY + 17, { align: 'right' });
   doc.text(`Total de Demandas: ${tasks.length}`, rightX - 5, prestadorTopY + 21.5, { align: 'right' });
+
   // ═══════ SEÇÃO 3: TABELA DE DEMANDAS / TAREFAS ═══════
   const tableStartY = prestadorTopY + prestadorBoxHeight + 8;
 
@@ -516,11 +544,12 @@ export async function generatePayrollPdf({
 
   const fRate = freelancer ? (parseFloat(freelancer.hourlyRate) || 0) : 0;
   const tableRows = tasks.length === 0
-    ? [['-', 'Nenhum serviço registrado neste período.', '-', '-', '-', '0,0h', '-']]
+    ? [['-', 'Nenhum serviço registrado neste período.', '-', '-', '-', '0,0h', '-', '-']]
     : tasks.map(t => {
         const cName = getClientName ? getClientName(t.clientId) : (t.clientId || '-');
         const h = parseFloat(t.hours) || 0;
         const subtotal = h * fRate;
+        const statusLabel = t.status === 'paid' ? 'Pago' : t.status === 'delivered' ? 'Entregue' : t.status === 'in_progress' ? 'Andamento' : 'Pendente';
 
         return [
           t.title || 'Sem título',
@@ -529,7 +558,8 @@ export async function generatePayrollPdf({
           formatDate(t.requestDate),
           formatDate(t.actualDeliveryDate),
           `${h.toFixed(1).replace('.', ',')}h`,
-          fRate > 0 ? formatCurrency(subtotal) : '-'
+          fRate > 0 ? formatCurrency(subtotal) : '-',
+          statusLabel
         ];
       });
 
@@ -539,9 +569,9 @@ export async function generatePayrollPdf({
   autoTable(doc, {
     startY: tableStartY,
     margin: { left: marginX, right: marginX },
-    head: [['Demanda / Atividade', 'Cliente', 'Categoria', 'Solicitado', 'Entregue', 'Horas', 'Subtotal']],
+    head: [['Demanda / Atividade', 'Cliente', 'Categoria', 'Solicitado', 'Entregue', 'Horas', 'Subtotal', 'Status']],
     body: tableRows,
-    foot: [['Total de Horas Realizadas:', '', '', '', '', totalHoursStr, totalAmountStr]],
+    foot: [['Total de Horas Realizadas:', '', '', '', '', totalHoursStr, totalAmountStr, '']],
     theme: 'grid',
     headStyles: {
       fillColor: [30, 30, 30],
@@ -552,13 +582,14 @@ export async function generatePayrollPdf({
       halign: 'left'
     },
     columnStyles: {
-      0: { cellWidth: 48, halign: 'left', fontStyle: 'bold' },
-      1: { cellWidth: 32, halign: 'left' },
-      2: { cellWidth: 26, halign: 'left' },
-      3: { cellWidth: 19, halign: 'center' },
-      4: { cellWidth: 19, halign: 'center' },
-      5: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
-      6: { cellWidth: 20, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: 44, halign: 'left', fontStyle: 'bold' },
+      1: { cellWidth: 30, halign: 'left' },
+      2: { cellWidth: 24, halign: 'left' },
+      3: { cellWidth: 18, halign: 'center' },
+      4: { cellWidth: 18, halign: 'center' },
+      5: { cellWidth: 14, halign: 'right', fontStyle: 'bold' },
+      6: { cellWidth: 18, halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: 14, halign: 'center', fontStyle: 'bold' }
     },
     bodyStyles: {
       fontSize: 7.5,
@@ -601,7 +632,7 @@ export async function generatePayrollPdf({
 
   const boxesTopY = sectionLabelY + 4;
   const summaryBoxWidth = 72;
-  const summaryBoxHeight = 32;
+  const summaryBoxHeight = allPaid ? 36 : 32;
   const summaryBoxX = rightX - summaryBoxWidth;
   const payBoxWidth = summaryBoxX - marginX - 6;
 
@@ -614,16 +645,46 @@ export async function generatePayrollPdf({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(20, 20, 20);
-  doc.text('Dados para Pagamento via PIX (Asaas)', marginX + 4, boxesTopY + 7);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(70, 70, 70);
-  doc.text(`Favorecido: ${targetName}`, marginX + 4, boxesTopY + 13);
-  doc.text(`Chave PIX: ${targetPix}`, marginX + 4, boxesTopY + 18);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 30, 30);
-  doc.text(`Status: Fechamento Aprovado para Transferência`, marginX + 4, boxesTopY + 24);
+  if (allPaid) {
+    doc.text('Comprovante de Quitação PIX (Asaas)', marginX + 4, boxesTopY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(70, 70, 70);
+    doc.text(`Favorecido: ${targetName}`, marginX + 4, boxesTopY + 12.5);
+    doc.text(`Chave PIX: ${targetPix}`, marginX + 4, boxesTopY + 17.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 20);
+    doc.text('Status: PAGO / TRANSFERÊNCIA CONCLUÍDA', marginX + 4, boxesTopY + 22.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(90, 90, 90);
+    const pDate = collectedPaymentDates.length > 0 ? formatDate(collectedPaymentDates[0]) : todayStr;
+    const pId = collectedPaymentIds.length > 0 ? collectedPaymentIds.join(', ') : 'Asaas PIX';
+    doc.text(`Data Quitação: ${pDate}  |  ID Asaas: ${pId}`, marginX + 4, boxesTopY + 27.5);
+
+    if (collectedReceiptUrls.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(30, 30, 30);
+      const shortUrl = collectedReceiptUrls[0].length > 45 ? collectedReceiptUrls[0].substring(0, 43) + '...' : collectedReceiptUrls[0];
+      doc.textWithLink(`Comprovante Asaas Online: ${shortUrl}`, marginX + 4, boxesTopY + 32, { url: collectedReceiptUrls[0] });
+    }
+  } else {
+    doc.text('Dados para Pagamento via PIX (Asaas)', marginX + 4, boxesTopY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(70, 70, 70);
+    doc.text(`Favorecido: ${targetName}`, marginX + 4, boxesTopY + 13);
+    doc.text(`Chave PIX: ${targetPix}`, marginX + 4, boxesTopY + 18);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(hasAnyPaid ? 'Status: PARCIALMENTE PAGO' : 'Status: Fechamento Aprovado para Transferência', marginX + 4, boxesTopY + 24);
+  }
 
   // Right Box: Totais
   doc.setFillColor(250, 250, 250);
@@ -654,7 +715,7 @@ export async function generatePayrollPdf({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(20, 20, 20);
-  doc.text('Total a Pagar:', summaryBoxX + 4, boxesTopY + 27);
+  doc.text(allPaid ? 'Total Quitado:' : 'Total a Pagar:', summaryBoxX + 4, boxesTopY + 27);
   doc.setFontSize(11.5);
   doc.text(formatCurrency(totalAmount), summaryBoxX + summaryBoxWidth - 4, boxesTopY + 27, { align: 'right' });
 

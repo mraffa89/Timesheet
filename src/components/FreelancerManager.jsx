@@ -315,6 +315,7 @@ export default function FreelancerManager({
     return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
   });
   const [payrollFreelancerId, setPayrollFreelancerId] = useState('all');
+  const [payrollStatusFilter, setPayrollStatusFilter] = useState('all'); // 'all', 'delivered' (não pago), 'paid' (pago)
 
   // Modals state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -640,7 +641,12 @@ export default function FreelancerManager({
       return true;
     });
 
-    const deliveredMonthTasks = monthTasks.filter(t => t.status === 'delivered' || t.status === 'paid');
+    const deliveredMonthTasks = monthTasks.filter(t => {
+      if (payrollStatusFilter === 'delivered') return t.status === 'delivered';
+      if (payrollStatusFilter === 'paid') return t.status === 'paid';
+      return t.status === 'delivered' || t.status === 'paid';
+    });
+
     const totalHours = deliveredMonthTasks.reduce((sum, t) => sum + (parseFloat(t.hours) || 0), 0);
     
     // Total R$ a pagar
@@ -650,6 +656,14 @@ export default function FreelancerManager({
       const rate = freela ? (parseFloat(freela.hourlyRate) || 0) : 0;
       totalAmountToPay += (parseFloat(t.hours) || 0) * rate;
     });
+
+    // Identificação de quitação
+    const paidTasks = deliveredMonthTasks.filter(t => t.status === 'paid');
+    const isAllPaid = deliveredMonthTasks.length > 0 && paidTasks.length === deliveredMonthTasks.length;
+    const hasAnyPaid = paidTasks.length > 0;
+    const paymentIds = Array.from(new Set(paidTasks.map(t => t.paymentId).filter(Boolean)));
+    const paymentDates = Array.from(new Set(paidTasks.map(t => t.paymentDate).filter(Boolean)));
+    const paymentReceiptUrls = Array.from(new Set(paidTasks.map(t => t.paymentReceiptUrl).filter(Boolean)));
 
     // Distribuição por cliente
     const byClientMap = {};
@@ -670,10 +684,15 @@ export default function FreelancerManager({
       deliveredMonthTasks,
       totalHours,
       totalAmountToPay,
+      isAllPaid,
+      hasAnyPaid,
+      paymentIds,
+      paymentDates,
+      paymentReceiptUrls,
       byClient: Object.entries(byClientMap).map(([name, hours]) => ({ name, hours })),
       byCategory: Object.entries(byCategoryMap).map(([name, hours]) => ({ name, hours }))
     };
-  }, [tasks, payrollDateRange, payrollFreelancerId, freelancers, clients]);
+  }, [tasks, payrollDateRange, payrollFreelancerId, payrollStatusFilter, freelancers, clients]);
 
   // ═══════════════════════════════════════════════════════════════════════
   // CÁLCULOS E AÇÕES EM LOTE (SELEÇÃO, SOMA DE HORAS, PIX, EXCLUSÃO)
@@ -968,33 +987,48 @@ export default function FreelancerManager({
     setIsFreelancerModalOpen(false);
   };
 
-  // Copiar resumo para WhatsApp
+  // Copiar resumo para WhatsApp (Enxuto e com indicação clara de PAGO ou A PAGAR)
   const handleCopyWhatsAppSummary = () => {
     const freela = getFreelancer(payrollFreelancerId);
     const targetName = freela ? freela.name : 'Equipe';
     const periodName = payrollPeriodLabel;
-    const pixInfo = freela?.pixKey ? `\n🔑 Chave PIX: ${freela.pixKey}` : '';
+    const isPaid = payrollData.isAllPaid;
+    const hasPaid = payrollData.hasAnyPaid;
 
     let text = `*FECHAMENTO DE SERVIÇOS - ${periodName.toUpperCase()}*\n`;
     text += `Olá, ${targetName}!\n\n`;
-    text += `Segue o espelho de demandas concluídas no período (${periodName}):\n\n`;
 
-    payrollData.deliveredMonthTasks.forEach((t, i) => {
+    if (isPaid) {
+      text += `✅ *STATUS: PAGO VIA PIX*\n`;
+      if (payrollData.paymentDates.length > 0) {
+        text += `📅 *Data:* ${formatDateBR(payrollData.paymentDates[0])}\n`;
+      }
+      if (payrollData.paymentIds.length > 0) {
+        text += `🆔 *ID Asaas:* ${payrollData.paymentIds.join(', ')}\n`;
+      }
+    } else if (hasPaid) {
+      text += `⚠️ *STATUS: PARCIALMENTE PAGO*\n`;
+    } else {
+      text += `⏳ *STATUS: APROVADO / AGUARDANDO PAGAMENTO*\n`;
+    }
+
+    text += `\n📋 *Demandas:*\n`;
+    payrollData.deliveredMonthTasks.forEach((t) => {
       const clientName = getClientName(t.clientId);
-      text += `${i + 1}. *${t.title}* (${clientName})\n`;
-      text += `   • Categoria: ${t.category || 'Geral'}\n`;
-      text += `   • Entregue em: ${formatDateBR(t.actualDeliveryDate)}\n`;
-      text += `   • Horas: ${parseFloat(t.hours).toFixed(1)}h\n\n`;
+      text += `• ${t.title} (${clientName}) - ${parseFloat(t.hours).toFixed(1).replace('.', ',')}h\n`;
     });
 
-    text += `━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     text += `⏱️ *Total de Horas:* ${payrollData.totalHours.toFixed(1).replace('.', ',')}h\n`;
     if (freela?.hourlyRate > 0) {
-      text += `💵 *Valor da Hora:* ${formatCurrency(freela.hourlyRate)}/h\n`;
-      text += `💰 *VALOR TOTAL A RECEBER:* ${formatCurrency(payrollData.totalAmountToPay)}\n`;
+      text += `💰 *Valor Total:* ${formatCurrency(payrollData.totalAmountToPay)} (${formatCurrency(freela.hourlyRate)}/h)\n`;
+    } else {
+      text += `💰 *Valor Total:* ${formatCurrency(payrollData.totalAmountToPay)}\n`;
     }
-    text += `${pixInfo}\n`;
-    text += `\nQualquer dúvida ou ajuste, estamos à disposição!\n`;
+    if (freela?.pixKey) {
+      text += `🔑 *Chave PIX:* ${freela.pixKey}\n`;
+    }
+    text += `\nAgradecemos pela parceria!\n`;
     text += `*${companyInfo?.brandName || 'Matheus Raffa'}*`;
 
     navigator.clipboard.writeText(text);
@@ -1002,7 +1036,7 @@ export default function FreelancerManager({
     setTimeout(() => setCopiedWhatsAppMsg(false), 2500);
   };
 
-  // Exportar PDF de Fechamento do Freelancer (Layout Corporativo Idêntico ao Relatório de Clientes)
+  // Exportar PDF de Fechamento do Freelancer (Layout Corporativo Monocromático + Comprovante Oficial Asaas)
   const handleExportPayrollPDF = async () => {
     try {
       const freela = getFreelancer(payrollFreelancerId);
@@ -1017,10 +1051,30 @@ export default function FreelancerManager({
         totalAmount: payrollData.totalAmountToPay,
         periodLabel: payrollPeriodLabel,
         company: companyInfo,
-        getClientName
+        getClientName,
+        isPaid: payrollData.isAllPaid,
+        paymentIds: payrollData.paymentIds,
+        paymentDates: payrollData.paymentDates,
+        paymentReceiptUrls: payrollData.paymentReceiptUrls
       });
 
       doc.save(`Fechamento_${safeName}_${safePeriod}.pdf`);
+
+      // Se houver comprovante oficial emitido pelo Asaas, exporta/abre junto automaticamente
+      if (payrollData.paymentReceiptUrls && payrollData.paymentReceiptUrls.length > 0) {
+        payrollData.paymentReceiptUrls.forEach(url => {
+          if (url) window.open(url, '_blank');
+        });
+      } else if (payrollData.paymentIds && payrollData.paymentIds.length > 0) {
+        for (const pid of payrollData.paymentIds) {
+          try {
+            const transferInfo = await fetchAsaasTransferReceipt(pid);
+            if (transferInfo?.transactionReceiptUrl) {
+              window.open(transferInfo.transactionReceiptUrl, '_blank');
+            }
+          } catch (e) {}
+        }
+      }
     } catch (err) {
       alert('Erro ao gerar PDF: ' + err.message);
     }
@@ -1759,6 +1813,45 @@ export default function FreelancerManager({
                   buttonClassName="py-1.5 bg-white border-gray-200"
                 />
               </div>
+
+              {/* Filtro de Status de Pagamento (Todos / Apenas Entregues / Apenas Pagos) */}
+              <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setPayrollStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollStatusFilter === 'all'
+                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollStatusFilter('delivered')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollStatusFilter === 'delivered'
+                      ? 'bg-white text-blue-900 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                  title="Demandas entregues aguardando pagamento"
+                >
+                  Apenas Entregues
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollStatusFilter('paid')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollStatusFilter === 'paid'
+                      ? 'bg-white text-emerald-900 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                  title="Demandas já quitadas via PIX"
+                >
+                  Apenas Pagos
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1774,11 +1867,24 @@ export default function FreelancerManager({
               <button
                 onClick={handleExportPayrollPDF}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
-                title="Exportar PDF de Fechamento"
+                title="Exportar PDF de Fechamento (inclui comprovante oficial Asaas se quitado)"
               >
                 <Download size={14} />
                 <span>Exportar PDF</span>
               </button>
+
+              {payrollData.paymentReceiptUrls.length > 0 && (
+                <button
+                  onClick={() => {
+                    payrollData.paymentReceiptUrls.forEach(url => window.open(url, '_blank'));
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                  title="Visualizar Comprovante Oficial emitido pelo Asaas"
+                >
+                  <Receipt size={14} />
+                  <span>Comprovante Asaas</span>
+                </button>
+              )}
 
               <button
                 onClick={handleExportPayrollCSV}
@@ -1809,22 +1915,39 @@ export default function FreelancerManager({
                 <CheckCircle2 size={22} />
               </div>
               <div>
-                <span className="text-xs font-semibold text-gray-500 block">Demandas Entregues no Mês</span>
+                <span className="text-xs font-semibold text-gray-500 block">Demandas Entregues no Período</span>
                 <span className="text-2xl font-black text-gray-950 font-title">
                   {payrollData.deliveredMonthTasks.length} de {payrollData.monthTasks.length}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-2xs flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-yellow-50 border border-yellow-200 flex items-center justify-center text-yellow-700 shrink-0">
+            <div className={`bg-white border rounded-2xl p-5 shadow-2xs flex items-center gap-4 ${
+              payrollData.isAllPaid ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
+            }`}>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${
+                payrollData.isAllPaid 
+                  ? 'bg-emerald-100 border-emerald-200 text-emerald-700' 
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+              }`}>
                 <DollarSign size={22} />
               </div>
               <div>
-                <span className="text-xs font-semibold text-gray-500 block">Total a Pagar aos Prestadores</span>
-                <span className="text-2xl font-black text-yellow-950 font-title">
+                <span className="text-xs font-semibold text-gray-500 block">
+                  {payrollData.isAllPaid 
+                    ? 'Total Quitado (Pago via PIX)' 
+                    : payrollData.hasAnyPaid 
+                    ? 'Total a Pagar / Quitado' 
+                    : 'Total a Pagar aos Prestadores'}
+                </span>
+                <span className={`text-2xl font-black font-title ${payrollData.isAllPaid ? 'text-emerald-950' : 'text-yellow-950'}`}>
                   {formatCurrency(payrollData.totalAmountToPay)}
                 </span>
+                {payrollData.isAllPaid && payrollData.paymentDates.length > 0 && (
+                  <span className="text-[10px] font-bold text-emerald-700 block">
+                    Pago em {formatDateBR(payrollData.paymentDates[0])}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1838,7 +1961,7 @@ export default function FreelancerManager({
                 <span>Horas de Freelancer por Cliente</span>
               </h3>
               {payrollData.byClient.length === 0 ? (
-                <p className="text-xs text-gray-400 py-4 text-center">Nenhuma demanda concluída neste mês.</p>
+                <p className="text-xs text-gray-400 py-4 text-center">Nenhuma demanda concluída neste período.</p>
               ) : (
                 <div className="flex flex-col gap-2 pt-1">
                   {payrollData.byClient.map(item => {
@@ -1866,7 +1989,7 @@ export default function FreelancerManager({
                 <span>Horas de Freelancer por Categoria</span>
               </h3>
               {payrollData.byCategory.length === 0 ? (
-                <p className="text-xs text-gray-400 py-4 text-center">Nenhuma demanda concluída neste mês.</p>
+                <p className="text-xs text-gray-400 py-4 text-center">Nenhuma demanda concluída neste período.</p>
               ) : (
                 <div className="flex flex-col gap-2 pt-1">
                   {payrollData.byCategory.map(item => {
@@ -1892,7 +2015,7 @@ export default function FreelancerManager({
           <div className="bg-white border border-gray-200 rounded-2xl shadow-2xs overflow-hidden">
             <div className="p-4 border-b border-gray-150 flex justify-between items-center">
               <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                Extrato Detalhado de Demandas do Mês
+                Extrato Detalhado de Demandas do Período
               </h3>
               <span className="text-xs text-gray-400">
                 {payrollData.deliveredMonthTasks.length} demandas contabilizadas
@@ -1901,7 +2024,7 @@ export default function FreelancerManager({
 
             {payrollData.deliveredMonthTasks.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-400">
-                Nenhuma demanda entregue neste mês selecionado.
+                Nenhuma demanda encontrada para o filtro de status e período selecionados.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1916,6 +2039,7 @@ export default function FreelancerManager({
                       <th className="py-2.5 px-4">Entregue</th>
                       <th className="py-2.5 px-4 text-center">Horas</th>
                       <th className="py-2.5 px-4 text-right">Subtotal</th>
+                      <th className="py-2.5 px-4 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-150">
@@ -1934,6 +2058,27 @@ export default function FreelancerManager({
                           <td className="py-2.5 px-4 text-green-700 font-mono text-[11px] font-bold">{formatDateBR(t.actualDeliveryDate)}</td>
                           <td className="py-2.5 px-4 text-center font-bold">{parseFloat(t.hours).toFixed(1).replace('.', ',')}h</td>
                           <td className="py-2.5 px-4 text-right font-black text-gray-950 font-title">{formatCurrency(subtotal)}</td>
+                          <td className="py-2.5 px-4 text-center">
+                            <div className="inline-flex items-center justify-center gap-1">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                t.status === 'paid' 
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                                  : 'bg-blue-50 text-blue-800 border-blue-200'
+                              }`}>
+                                {t.status === 'paid' ? 'Pago' : 'Entregue'}
+                              </span>
+                              {t.status === 'paid' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingReceiptTask(t)}
+                                  className="p-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-100 rounded-full transition-colors cursor-pointer"
+                                  title="Ver Comprovante PIX"
+                                >
+                                  <Receipt size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
