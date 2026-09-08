@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit3, Trash2, Search, X, Sparkles, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit3, Trash2, Search, X, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Check } from 'lucide-react';
 
 function SearchableClientSelect({ clients = [], value, onChange, placeholder = "Pesquisar ou selecionar cliente..." }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,29 +32,31 @@ function SearchableClientSelect({ clients = [], value, onChange, placeholder = "
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between border border-gray-200 rounded-lg p-2.5 text-xs text-left bg-white focus:outline-none focus:border-yellow-500 font-medium cursor-pointer"
+        className={`w-full flex items-center justify-between border rounded-lg p-2.5 text-xs text-left bg-gray-50/70 hover:bg-white focus:bg-white focus:outline-none transition-all cursor-pointer ${
+          isOpen ? 'border-gray-900 ring-2 ring-gray-900/10 bg-white' : 'border-gray-200 hover:border-gray-300'
+        }`}
       >
         <span className={selectedClient ? "text-gray-950 font-bold" : "text-gray-400"}>
           {selectedClient ? selectedClient.name : placeholder}
         </span>
-        <span className="text-gray-400 text-[10px]">▼</span>
+        <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-gray-900' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl p-2 flex flex-col gap-1.5 max-h-56">
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl p-2 flex flex-col gap-1.5 max-h-56 animate-in fade-in-0 zoom-in-95">
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               autoFocus
               placeholder="Digite o nome do cliente..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-8 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-yellow-500"
+              className="w-full pl-8 pr-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-900 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
             />
           </div>
 
-          <div className="overflow-y-auto max-h-40 divide-y divide-gray-100">
+          <div className="overflow-y-auto max-h-40 divide-y divide-gray-50 scrollbar-thin">
             {filtered.length === 0 ? (
               <div className="p-2 text-center text-xs text-gray-400">Nenhum cliente encontrado.</div>
             ) : (
@@ -67,12 +69,12 @@ function SearchableClientSelect({ clients = [], value, onChange, placeholder = "
                     setIsOpen(false);
                     setQuery('');
                   }}
-                  className={`w-full text-left p-2 rounded-md text-xs font-semibold hover:bg-yellow-50 transition-colors flex items-center justify-between cursor-pointer ${
-                    c.id === value ? 'bg-yellow-100/70 text-gray-950 font-bold' : 'text-gray-700'
+                  className={`w-full text-left p-2 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors flex items-center justify-between cursor-pointer ${
+                    c.id === value ? 'bg-gray-100 text-gray-950 font-bold border border-gray-200' : 'text-gray-700'
                   }`}
                 >
                   <span>{c.name}</span>
-                  {c.id === value && <span className="text-yellow-600 font-bold">✓</span>}
+                  {c.id === value && <Check size={13} className="text-gray-950 font-bold" />}
                 </button>
               ))
             )}
@@ -387,14 +389,15 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
             <input 
               type="text"
               placeholder="Buscar demanda ou cliente..."
-              className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium text-gray-800 placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:bg-white transition-all"
+              className="w-full pl-9 pr-8 py-2 bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 focus:border-gray-900 rounded-lg text-xs font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900/10 transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                title="Limpar busca"
               >
                 <X size={12} />
               </button>
@@ -402,7 +405,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
           </div>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer" 
+            className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors" 
             value={filterClient} 
             onChange={(e) => setFilterClient(e.target.value)}
           >
@@ -411,7 +414,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
           </select>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer" 
+            className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors" 
             value={filterMonth} 
             onChange={(e) => setFilterMonth(e.target.value)}
           >
@@ -422,7 +425,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
           </select>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer" 
+            className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors" 
             value={filterBillable} 
             onChange={(e) => setFilterBillable(e.target.value)}
           >
@@ -568,7 +571,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
             <input 
               id="entry-del-date" 
               type="date" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
               value={deliveryDate} 
               onChange={(e) => setDeliveryDate(e.target.value)} 
               required
@@ -579,7 +582,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
             <label className="text-xs font-semibold text-gray-600" htmlFor="entry-desc">Demanda / Descrição</label>
             <textarea 
               id="entry-desc" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
               value={description} 
               onChange={(e) => setDescription(e.target.value)} 
               placeholder="Ex: Automação e publicação de novas artes de mídias sociais"
@@ -594,9 +597,9 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
               <input 
                 id="entry-hours" 
                 type="number" 
-                step="0.01"
+                step="0.01" 
                 min="0.01"
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
                 value={hours} 
                 onChange={(e) => setHours(e.target.value)} 
                 required
@@ -607,7 +610,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
               <label className="text-xs font-semibold text-gray-600" htmlFor="entry-status">Status</label>
               <select 
                 id="entry-status" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white cursor-pointer" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 bg-white cursor-pointer" 
                 value={status} 
                 onChange={(e) => setStatus(e.target.value)}
               >
@@ -622,7 +625,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
             <input 
               id="entry-billable" 
               type="checkbox" 
-              className="w-4 h-4 text-yellow-500 border-gray-300 rounded focus:ring-yellow-500 cursor-pointer" 
+              className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900 cursor-pointer" 
               checked={billable} 
               onChange={(e) => setBillable(e.target.checked)} 
             />

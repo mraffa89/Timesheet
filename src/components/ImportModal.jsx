@@ -101,19 +101,19 @@ function SearchableBoardClientSelect({ value, onChange, clients, boardName, onQu
         <div className="absolute z-50 right-0 top-full mt-1 w-full min-w-[280px] bg-white border border-gray-200 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 animate-in fade-in-0 zoom-in-95">
           {/* Input de Pesquisa Rápida */}
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Digite para pesquisar cliente (A-Z)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 placeholder:text-gray-400"
+              className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-900 focus:bg-white text-gray-900 placeholder:text-gray-400 font-medium"
             />
           </div>
 
           {/* Lista de Opções Ordenadas */}
-          <div className="max-h-[200px] overflow-y-auto flex flex-col gap-0.5 mt-1 divide-y divide-gray-50">
+          <div className="max-h-[200px] overflow-y-auto flex flex-col gap-0.5 mt-1 divide-y divide-gray-50 scrollbar-thin">
             {/* Opção Ignorar */}
             <button
               type="button"
@@ -149,14 +149,14 @@ function SearchableBoardClientSelect({ value, onChange, clients, boardName, onQu
                       setIsOpen(false);
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-yellow-100 text-gray-950 font-bold' : 'hover:bg-gray-50 text-gray-800'
+                      isSelected ? 'bg-gray-100 text-gray-950 font-bold border border-gray-200' : 'hover:bg-gray-50 text-gray-800'
                     }`}
                   >
                     <span className="flex items-center gap-1.5 truncate">
                       <span className="text-gray-400">💼</span>
                       <span className="truncate">{c.name}</span>
                     </span>
-                    {isSelected && <Check size={13} className="text-yellow-700 shrink-0" />}
+                    {isSelected && <Check size={13} className="text-gray-950 shrink-0" />}
                   </button>
                 );
               })

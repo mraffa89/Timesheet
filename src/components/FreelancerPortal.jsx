@@ -706,14 +706,23 @@ export default function FreelancerPortal({
           </div>
 
           <div className="relative w-full lg:w-72">
-            <Search size={14} className="absolute left-3 top-3 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
               type="text" 
               placeholder="Buscar por tarefa, cliente ou categoria..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+              className="w-full pl-9 pr-8 py-2 text-xs bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 focus:border-gray-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/10 text-gray-900 font-medium placeholder-gray-400 transition-all"
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')} 
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                title="Limpar busca"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -964,14 +973,14 @@ export default function FreelancerPortal({
                   Nome Completo:
                 </label>
                 <div className="relative">
-                  <User size={14} className="absolute left-3 top-3 text-gray-400" />
+                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input 
                     type="text"
                     required
                     value={profileName}
                     onChange={(e) => setProfileName(e.target.value)}
                     placeholder="Seu nome completo"
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-medium"
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-medium"
                   />
                 </div>
               </div>
@@ -982,14 +991,14 @@ export default function FreelancerPortal({
                     E-mail / Usuário de Login:
                   </label>
                   <div className="relative">
-                    <Mail size={14} className="absolute left-3 top-3 text-gray-400" />
+                    <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input 
                       type="email"
                       required
                       value={profileUsername}
                       onChange={(e) => setProfileUsername(e.target.value)}
                       placeholder="exemplo@email.com"
-                      className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-medium"
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-medium"
                     />
                   </div>
                 </div>
@@ -999,18 +1008,18 @@ export default function FreelancerPortal({
                     Nova Senha de Acesso:
                   </label>
                   <div className="relative">
-                    <Lock size={14} className="absolute left-3 top-3 text-gray-400" />
+                    <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input 
                       type={showPassword ? 'text' : 'password'}
                       value={profilePassword}
                       onChange={(e) => setProfilePassword(e.target.value)}
                       placeholder="Deixe em branco p/ manter"
-                      className="w-full pl-9 pr-9 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-mono"
+                      className="w-full pl-9 pr-9 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
                     >
                       {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
@@ -1024,13 +1033,13 @@ export default function FreelancerPortal({
                     Telefone / WhatsApp:
                   </label>
                   <div className="relative">
-                    <Phone size={14} className="absolute left-3 top-3 text-gray-400" />
+                    <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input 
                       type="text"
                       value={profilePhone}
                       onChange={(e) => setProfilePhone(formatPhone(e.target.value))}
                       placeholder="(99) 99999-9999"
-                      className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-medium"
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-medium"
                     />
                   </div>
                 </div>
@@ -1040,7 +1049,7 @@ export default function FreelancerPortal({
                     Chave PIX / CNPJ para Pagamento:
                   </label>
                   <div className="relative">
-                    <CreditCard size={14} className="absolute left-3 top-3 text-gray-400" />
+                    <CreditCard size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input 
                       type="text"
                       value={profilePixKey}
@@ -1112,7 +1121,7 @@ export default function FreelancerPortal({
                     required
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-medium"
+                    className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-medium"
                   />
                 </div>
 
@@ -1128,7 +1137,7 @@ export default function FreelancerPortal({
                     placeholder="Ex: 3.5"
                     value={deliveryHours}
                     onChange={(e) => setDeliveryHours(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-bold"
+                    className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 font-bold"
                   />
                 </div>
               </div>
@@ -1142,7 +1151,7 @@ export default function FreelancerPortal({
                   placeholder="Ex: Arquivo finalizado enviado no drive, arte pronta para impressão..."
                   value={deliveryNotes}
                   onChange={(e) => setDeliveryNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500"
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10"
                 />
               </div>
 

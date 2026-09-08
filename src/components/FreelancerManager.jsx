@@ -125,8 +125,8 @@ function SearchableSelect({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between border rounded-lg px-3 py-2 text-xs text-left bg-gray-50 focus:bg-white focus:outline-none transition-all cursor-pointer ${
-          isOpen ? 'border-yellow-500 ring-2 ring-yellow-400/20 bg-white' : 'border-gray-300 hover:border-gray-400'
+        className={`w-full flex items-center justify-between border rounded-lg px-3 py-2 text-xs text-left bg-gray-50/70 hover:bg-white focus:bg-white focus:outline-none transition-all cursor-pointer ${
+          isOpen ? 'border-gray-900 ring-2 ring-gray-900/10 bg-white' : 'border-gray-200 hover:border-gray-300'
         } ${buttonClassName}`}
       >
         <div className="flex items-center gap-2 overflow-hidden flex-1 mr-1">
@@ -154,27 +154,27 @@ function SearchableSelect({
           {(selectedOption || (value && allowCustom)) && !required && (
             <span
               onClick={handleClear}
-              className="p-0.5 hover:text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
+              className="p-0.5 hover:text-gray-700 rounded-full hover:bg-gray-200 transition-colors cursor-pointer"
               title="Limpar seleção"
             >
               <X size={12} />
             </span>
           )}
-          <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-yellow-600' : ''}`} />
+          <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-gray-900' : 'text-gray-400'}`} />
         </div>
       </button>
 
       {isOpen && (
-        <div className="absolute z-[70] left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 animate-in fade-in-0 zoom-in-95">
+        <div className="absolute z-[70] left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl p-2 flex flex-col gap-1.5 animate-in fade-in-0 zoom-in-95">
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               autoFocus
               placeholder={searchPlaceholder}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
+              className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-900 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
             />
           </div>
 
@@ -183,10 +183,10 @@ function SearchableSelect({
               <button
                 type="button"
                 onClick={() => handleSelect(search.trim())}
-                className="w-full text-left p-2 rounded-lg text-xs font-semibold bg-yellow-50/70 hover:bg-yellow-100 text-yellow-900 flex items-center justify-between cursor-pointer mb-1 border border-yellow-200"
+                className="w-full text-left p-2 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-900 flex items-center justify-between cursor-pointer mb-1 border border-gray-200"
               >
                 <span>Usar "<strong>{search.trim()}</strong>"</span>
-                <span className="text-[10px] bg-yellow-200 px-1.5 py-0.5 rounded font-bold">Novo</span>
+                <span className="text-[10px] bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded font-bold">Novo</span>
               </button>
             )}
 
@@ -204,7 +204,7 @@ function SearchableSelect({
                     onClick={() => handleSelect(opt.value)}
                     className={`w-full text-left p-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
                       isSelected
-                        ? 'bg-yellow-100/80 text-gray-950 font-bold border border-yellow-200'
+                        ? 'bg-gray-100 text-gray-950 font-bold border border-gray-200'
                         : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
@@ -221,7 +221,7 @@ function SearchableSelect({
                         )}
                       </div>
                     </div>
-                    {isSelected && <Check size={14} className="text-yellow-700 shrink-0 font-bold" />}
+                    {isSelected && <Check size={14} className="text-gray-950 shrink-0 font-bold" />}
                   </button>
                 );
               })
@@ -237,6 +237,7 @@ export default function FreelancerManager({
   freelancers = [],
   tasks = [],
   clients = [],
+  entries = [],
   companyInfo = {},
   categories = [],
   onAddCategory,
@@ -379,10 +380,45 @@ export default function FreelancerManager({
       }));
   }, [clients]);
 
-  // Apenas clientes ativos para o cadastro e edição de demandas
+  // Apenas clientes com assinatura ativa ou fatura/demanda faturável no mês de referência
   const activeClientOptions = useMemo(() => {
+    // Determina o mês de referência da demanda (data de pedido da demanda ou mês do fechamento)
+    const targetMonth = (taskForm.requestDate && taskForm.requestDate.length >= 7)
+      ? taskForm.requestDate.substring(0, 7)
+      : payrollMonth;
+
     return clients
-      .filter(c => c.isActive !== false || c.id === taskForm.clientId)
+      .filter(c => {
+        // Se estiver editando e o cliente já estiver associado à demanda, mantém na lista
+        if (taskForm.clientId && c.id === taskForm.clientId) return true;
+
+        // Cliente não pode estar inativo
+        if (c.isActive === false) return false;
+
+        // 1. Possui assinatura recorrente ativa (Asaas ou contrato fixo/híbrido)
+        const hasSub = c.hasActiveSubscription === true || 
+                       c.has_active_subscription === true || 
+                       ((c.contractType === 'fixed' || c.contractType === 'hybrid') && parseFloat(c.fixedFee) > 0);
+        if (hasSub) return true;
+
+        // 2. Possui demanda faturável (billable) com horas no mês de referência
+        const hasBillableInMonth = entries.some(e => {
+          if (e.clientId !== c.id) return false;
+          const isBillable = e.billable === true || String(e.billable).toLowerCase() === 'true' || e.isBillable === true;
+          if (!isBillable) return false;
+          const hours = parseFloat(e.hours) || 0;
+          if (hours <= 0) return false;
+          const dateStr = e.deliveryDate || e.requestDate || '';
+          return dateStr.includes(targetMonth);
+        });
+        if (hasBillableInMonth) return true;
+
+        // 3. Possui cobrança Asaas salva para o cliente e mês
+        const hasSavedInvoice = !!localStorage.getItem(`raffa_asaas_billing_${c.id}_${targetMonth}`);
+        if (hasSavedInvoice) return true;
+
+        return false;
+      })
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }))
       .map(c => ({
         value: c.id,
@@ -390,7 +426,7 @@ export default function FreelancerManager({
         sublabel: c.cnpj ? formatCpfCnpj(c.cnpj) : '',
         keywords: `${c.cnpj || ''} ${c.email || ''}`
       }));
-  }, [clients, taskForm.clientId]);
+  }, [clients, taskForm.clientId, taskForm.requestDate, payrollMonth, entries]);
 
   const freelancerOptions = useMemo(() => {
     return [...freelancers]
@@ -871,14 +907,23 @@ export default function FreelancerManager({
           <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="relative w-64">
-                <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Pesquisar demandas, clientes..."
                   value={taskSearchTerm}
                   onChange={(e) => setTaskSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                  className="w-full pl-9 pr-8 py-2 text-xs bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 focus:border-gray-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/10 text-gray-900 transition-all placeholder-gray-400 font-medium"
                 />
+                {taskSearchTerm && (
+                  <button
+                    onClick={() => setTaskSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                    title="Limpar busca"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
 
               {/* Status Filter */}
@@ -1273,7 +1318,7 @@ export default function FreelancerManager({
               <select
                 value={payrollMonth}
                 onChange={(e) => setPayrollMonth(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-800 focus:outline-none focus:border-yellow-500 cursor-pointer"
+                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-800 focus:outline-none focus:border-gray-900 cursor-pointer"
               >
                 {uniqueMonths.map(m => (
                   <option key={m} value={m}>{getMonthNamePT(m)}</option>
@@ -1505,7 +1550,7 @@ export default function FreelancerManager({
                   placeholder="Ex: Criação de posts para Instagram da campanha de verão"
                   value={taskForm.title}
                   onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-medium"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900 font-medium"
                 />
               </div>
 
@@ -1569,7 +1614,7 @@ export default function FreelancerManager({
                     type="date"
                     value={taskForm.requestDate}
                     onChange={(e) => setTaskForm({ ...taskForm, requestDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                   />
                 </div>
 
@@ -1579,7 +1624,7 @@ export default function FreelancerManager({
                     type="date"
                     value={taskForm.expectedDueDate}
                     onChange={(e) => setTaskForm({ ...taskForm, expectedDueDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-bold"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900 font-bold"
                   />
                 </div>
               </div>
@@ -1591,7 +1636,7 @@ export default function FreelancerManager({
                     type="date"
                     value={taskForm.actualDeliveryDate}
                     onChange={(e) => setTaskForm({ ...taskForm, actualDeliveryDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                   />
                 </div>
 
@@ -1604,7 +1649,7 @@ export default function FreelancerManager({
                     placeholder="Ex: 3.5"
                     value={taskForm.hours}
                     onChange={(e) => setTaskForm({ ...taskForm, hours: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-bold"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900 font-bold"
                   />
                 </div>
 
@@ -1628,7 +1673,7 @@ export default function FreelancerManager({
                   placeholder="https://figma.com/... ou link do Google Drive"
                   value={taskForm.briefingUrl}
                   onChange={(e) => setTaskForm({ ...taskForm, briefingUrl: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                 />
               </div>
 
@@ -1639,7 +1684,7 @@ export default function FreelancerManager({
                   placeholder="Detalhes adicionais para o freelancer..."
                   value={taskForm.notes}
                   onChange={(e) => setTaskForm({ ...taskForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                 />
               </div>
 
@@ -1692,7 +1737,7 @@ export default function FreelancerManager({
                     placeholder="Ex: João da Silva"
                     value={freelancerForm.name}
                     onChange={(e) => setFreelancerForm({ ...freelancerForm, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-medium"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900 font-medium"
                   />
                 </div>
 
@@ -1703,15 +1748,15 @@ export default function FreelancerManager({
                     placeholder="Ex: Designer, Redator, Editor..."
                     value={freelancerForm.specialty}
                     onChange={(e) => setFreelancerForm({ ...freelancerForm, specialty: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                   />
                 </div>
               </div>
 
               {/* Login credentials */}
-              <div className="bg-yellow-50/50 border border-yellow-200 rounded-xl p-3 flex flex-col gap-2.5">
-                <span className="text-[11px] font-bold text-yellow-900 flex items-center gap-1">
-                  <Key size={13} /> Credenciais de Login para o Freelancer
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2.5">
+                <span className="text-[11px] font-bold text-gray-900 flex items-center gap-1">
+                  <Key size={13} className="text-gray-600" /> Credenciais de Login para o Freelancer
                 </span>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1723,7 +1768,7 @@ export default function FreelancerManager({
                       placeholder="Ex: joao ou joao@gmail.com"
                       value={freelancerForm.username}
                       onChange={(e) => setFreelancerForm({ ...freelancerForm, username: e.target.value })}
-                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-900 font-mono"
+                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 text-gray-900 font-mono"
                     />
                   </div>
 
@@ -1735,7 +1780,7 @@ export default function FreelancerManager({
                       placeholder="Defina a senha"
                       value={freelancerForm.password}
                       onChange={(e) => setFreelancerForm({ ...freelancerForm, password: e.target.value })}
-                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-900 font-mono"
+                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 text-gray-900 font-mono"
                     />
                   </div>
                 </div>
@@ -1752,7 +1797,7 @@ export default function FreelancerManager({
                     placeholder="Ex: 50"
                     value={freelancerForm.hourlyRate}
                     onChange={(e) => setFreelancerForm({ ...freelancerForm, hourlyRate: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-bold"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900 font-bold"
                   />
                 </div>
 
@@ -1763,7 +1808,7 @@ export default function FreelancerManager({
                     placeholder="CPF, E-mail ou Telefone"
                     value={freelancerForm.pixKey}
                     onChange={(e) => setFreelancerForm({ ...freelancerForm, pixKey: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                   />
                 </div>
 
@@ -1774,7 +1819,7 @@ export default function FreelancerManager({
                     placeholder="(11) 99999-9999"
                     value={freelancerForm.phone}
                     onChange={(e) => setFreelancerForm({ ...freelancerForm, phone: formatPhone(e.target.value) })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                   />
                 </div>
               </div>

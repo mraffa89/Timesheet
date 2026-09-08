@@ -1068,6 +1068,7 @@ function App() {
               freelancers={freelancers}
               tasks={freelancerTasks}
               clients={clients}
+              entries={entries}
               companyInfo={companyInfo}
               categories={serviceCategories}
               onAddCategory={handleAddCategory}

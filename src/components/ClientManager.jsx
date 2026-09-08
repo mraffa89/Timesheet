@@ -434,18 +434,19 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
         <div className="flex items-center gap-2">
           {/* Search Bar */}
           <div className="relative flex-grow sm:w-72">
-            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Pesquisar por nome, CNPJ, e-mail..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 text-gray-900"
+              className="w-full pl-9 pr-8 py-2 text-xs bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 focus:border-gray-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-900/10 text-gray-900 font-medium placeholder-gray-400 transition-all"
             />
             {searchTerm && (
               <button 
                 onClick={() => setSearchTerm('')} 
-                className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-700"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                title="Limpar busca"
               >
                 <X size={12} />
               </button>
@@ -749,14 +750,14 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               <input 
                 type="text" 
                 placeholder="CNPJ (apenas números ou formatado)"
-                className="flex-grow border border-gray-200 rounded-lg p-2 text-xs focus:outline-none focus:border-yellow-500 bg-white font-mono"
-                value={cnpj}
+                className="flex-grow border border-gray-200 rounded-lg p-2 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono"
+                value={cnpj} 
                 onChange={(e) => setCnpj(formatCpfCnpj(e.target.value))}
               />
               <button 
                 type="button"
                 onClick={handleImportAsaasByCnpj}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-2 text-xs font-bold cursor-pointer shrink-0 disabled:opacity-55 flex items-center gap-1"
+                className="bg-gray-900 hover:bg-black text-white rounded-lg px-3 py-2 text-xs font-bold cursor-pointer shrink-0 disabled:opacity-55 flex items-center gap-1 transition-colors"
                 disabled={isImportingCnpj}
               >
                 <Search size={12} /> {isImportingCnpj ? 'Buscando...' : 'Buscar'}
@@ -769,7 +770,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
             <input 
               id="client-name" 
               type="text" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               placeholder="Ex: CPR (MHB Raffa)"
@@ -785,7 +786,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                   type="button"
                   onClick={handleConsultPublicCnpj}
                   disabled={isConsultingPublicCnpj}
-                  className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="text-[10px] text-gray-700 hover:text-gray-950 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 underline"
                   title="Consultar dados da empresa na Receita Federal via API pública gratuita"
                 >
                   <Globe size={11} />
@@ -795,7 +796,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               <input 
                 id="client-cnpj-input" 
                 type="text" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white font-mono" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono" 
                 value={cnpj} 
                 onChange={(e) => setCnpj(formatCpfCnpj(e.target.value))} 
                 placeholder="00.000.000/0000-00"
@@ -807,7 +808,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               <input 
                 id="client-phone-input" 
                 type="text" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white font-mono" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono" 
                 value={phone} 
                 onChange={(e) => setPhone(formatPhone(e.target.value))} 
                 placeholder="(19) 99999-9999"
@@ -820,7 +821,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
             <input 
               id="client-address-input" 
               type="text" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
               value={address} 
               onChange={(e) => setAddress(e.target.value)} 
               placeholder="Av. Exemplo, 100 - Bairro, Cidade/UF - CEP: 13000-000"
@@ -833,7 +834,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               <input 
                 id="client-email" 
                 type="email" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
                 placeholder="financeiro@empresa.com.br"
@@ -845,7 +846,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               <input 
                 id="client-additional-email" 
                 type="email" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
                 value={additionalEmail} 
                 onChange={(e) => setAdditionalEmail(e.target.value)} 
                 placeholder="diretoria@empresa.com.br"
@@ -859,7 +860,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
               type="checkbox"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
-              className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
+              className="w-4 h-4 text-gray-900 rounded border-gray-300 focus:ring-gray-900 cursor-pointer"
             />
             <label htmlFor="client-is-active" className="text-xs font-semibold text-gray-700 cursor-pointer">
               Cliente Ativo (com contrato ou demandas correntes)
@@ -899,7 +900,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
             <label className="text-xs font-semibold text-gray-700" htmlFor="client-contract">Modelo de Contrato</label>
             <select 
               id="client-contract" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white cursor-pointer" 
+              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 bg-white cursor-pointer" 
               value={contractType} 
               onChange={(e) => setContractType(e.target.value)}
             >
@@ -917,7 +918,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                   id="client-fixed-fee" 
                   type="number" 
                   step="0.01" 
-                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
                   value={fixedFee} 
                   onChange={(e) => setFixedFee(e.target.value)} 
                   placeholder="0.00"
@@ -935,7 +936,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                   id="client-rate" 
                   type="number" 
                   step="0.01" 
-                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white" 
+                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
                   value={hourlyRate} 
                   onChange={(e) => setHourlyRate(e.target.value)} 
                   placeholder="0.00"

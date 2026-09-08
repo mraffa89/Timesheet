@@ -352,7 +352,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
         </div>
 
         <select 
-          className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
+          className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors"
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
         >
@@ -361,14 +361,23 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
         </select>
 
         <div className="relative max-w-xs w-full ml-auto">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input 
             type="text" 
             placeholder="Pesquisar demandas..." 
-            className="w-full bg-white border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-yellow-500"
+            className="w-full bg-gray-50/70 hover:bg-white focus:bg-white border border-gray-200 focus:border-gray-900 rounded-lg pl-9 pr-8 py-2 text-xs font-medium text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900/10 transition-all"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+              title="Limpar busca"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -601,7 +610,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
               <div className="flex flex-col gap-1">
                 <label className="font-semibold text-gray-500">Cliente</label>
                 <select 
-                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white cursor-pointer"
+                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 bg-white cursor-pointer"
                   value={formClientId}
                   onChange={(e) => setFormClientId(e.target.value)}
                 >
@@ -615,7 +624,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                 <input 
                   type="text" 
                   placeholder="Ex: Arte para Campanha de Matrículas"
-                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500"
+                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white"
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
                 />
@@ -627,7 +636,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                   <input 
                     type="number" 
                     step="0.25"
-                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500"
+                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white"
                     value={formHours}
                     onChange={(e) => setFormHours(e.target.value)}
                   />
@@ -635,7 +644,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                 <div className="flex flex-col gap-1">
                   <label className="font-semibold text-gray-500">Categoria (Tipo)</label>
                   <select 
-                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white cursor-pointer"
+                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 bg-white cursor-pointer"
                     value={formType}
                     onChange={(e) => setFormType(e.target.value)}
                   >
@@ -654,7 +663,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                   <input 
                     type="text" 
                     placeholder="Ex: Mari Orse"
-                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500"
+                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white"
                     value={formRequester}
                     onChange={(e) => setFormRequester(e.target.value)}
                   />
@@ -663,7 +672,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                   <label className="font-semibold text-gray-500">Data Agendada</label>
                   <input 
                     type="date" 
-                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white"
+                    className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white"
                     value={modalDate}
                     onChange={(e) => setModalDate(e.target.value)}
                   />
@@ -675,7 +684,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                 <input 
                   type="text" 
                   placeholder="Ex: https://trello.com/c/..."
-                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500"
+                  className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white"
                   value={formJobLink}
                   onChange={(e) => setFormJobLink(e.target.value)}
                 />
@@ -685,7 +694,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                 <label className="flex items-center gap-2 font-semibold text-gray-700 cursor-pointer">
                   <input 
                     type="checkbox" 
-                    className="w-4 h-4 text-yellow-500 border-gray-300 rounded focus:ring-yellow-500"
+                    className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-900 cursor-pointer"
                     checked={formBillable}
                     onChange={(e) => setFormBillable(e.target.checked)}
                   />
@@ -695,7 +704,7 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
                 <div className="flex items-center gap-1.5">
                   <span className="font-semibold text-gray-550 mr-1">Status:</span>
                   <select 
-                    className="border border-gray-250 rounded-lg py-1 px-2 text-xs focus:outline-none focus:border-yellow-500 bg-white cursor-pointer"
+                    className="border border-gray-200 rounded-lg py-1 px-2 text-xs focus:outline-none focus:border-gray-900 bg-white cursor-pointer"
                     value={formStatus}
                     onChange={(e) => setFormStatus(e.target.value)}
                   >
