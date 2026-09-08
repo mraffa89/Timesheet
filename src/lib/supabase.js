@@ -418,7 +418,7 @@ export async function deleteFreelancerTaskDb(id) {
 }
 
 function mapFreelancerTaskToDb(task) {
-  return {
+  const payload = {
     title: task.title,
     freelancer_id: task.freelancerId || null,
     client_id: task.clientId || null,
@@ -431,6 +431,11 @@ function mapFreelancerTaskToDb(task) {
     notes: task.notes || null,
     status: task.status || 'pending'
   };
+  if (task.paymentId !== undefined) payload.payment_id = task.paymentId || null;
+  if (task.paymentDate !== undefined) payload.payment_date = task.paymentDate || null;
+  if (task.paymentValue !== undefined) payload.payment_value = task.paymentValue ? parseFloat(task.paymentValue) : null;
+  if (task.paymentReceiptUrl !== undefined) payload.payment_receipt_url = task.paymentReceiptUrl || null;
+  return payload;
 }
 
 function mapFreelancerTaskFromDb(db) {
@@ -447,6 +452,10 @@ function mapFreelancerTaskFromDb(db) {
     briefingUrl: db.briefing_url || '',
     notes: db.notes || '',
     status: db.status || 'pending',
+    paymentId: db.payment_id || null,
+    paymentDate: db.payment_date || null,
+    paymentValue: db.payment_value ? parseFloat(db.payment_value) : null,
+    paymentReceiptUrl: db.payment_receipt_url || null,
     createdAt: db.created_at
   };
 }

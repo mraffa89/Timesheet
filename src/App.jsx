@@ -631,6 +631,43 @@ function App() {
     }
   };
 
+  const handleBatchUpdateFreelancerTasks = async (taskIds, updates) => {
+    if (!taskIds || taskIds.length === 0) return;
+    const idSet = new Set(taskIds);
+    const updatedTasks = freelancerTasks.map(t => {
+      if (idSet.has(t.id)) {
+        return { ...t, ...updates };
+      }
+      return t;
+    });
+
+    if (isOnline) {
+      try {
+        await Promise.all(
+          taskIds.map(id => updateFreelancerTaskDb(id, updates))
+        );
+      } catch (err) {
+        console.warn("Erro ao atualizar demandas em lote no Supabase:", err);
+      }
+    }
+    saveFreelancerTasks(updatedTasks);
+  };
+
+  const handleBatchDeleteFreelancerTasks = async (taskIds) => {
+    if (!taskIds || taskIds.length === 0) return;
+    const idSet = new Set(taskIds);
+    if (isOnline) {
+      try {
+        await Promise.all(
+          taskIds.map(id => deleteFreelancerTaskDb(id))
+        );
+      } catch (err) {
+        console.warn("Erro ao excluir demandas em lote no Supabase:", err);
+      }
+    }
+    saveFreelancerTasks(freelancerTasks.filter(t => !idSet.has(t.id)));
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // Categorias de Serviços / Demandas
   // ═══════════════════════════════════════════════════════════════
@@ -1078,6 +1115,8 @@ function App() {
               onAddTask={handleAddFreelancerTask}
               onUpdateTask={handleUpdateFreelancerTask}
               onDeleteTask={handleDeleteFreelancerTask}
+              onBatchUpdateTasks={handleBatchUpdateFreelancerTasks}
+              onBatchDeleteTasks={handleBatchDeleteFreelancerTasks}
             />
           )}
 

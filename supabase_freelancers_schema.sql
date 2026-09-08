@@ -30,8 +30,18 @@ create table if not exists public.freelancer_tasks (
   briefing_url text,
   notes text,
   status text default 'pending', -- 'pending', 'in_progress', 'delivered', 'paid'
+  payment_id text,
+  payment_date timestamp with time zone,
+  payment_value numeric,
+  payment_receipt_url text,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+-- Migrações incrementais caso a tabela já exista
+ALTER TABLE public.freelancer_tasks ADD COLUMN IF NOT EXISTS payment_id text;
+ALTER TABLE public.freelancer_tasks ADD COLUMN IF NOT EXISTS payment_date timestamp with time zone;
+ALTER TABLE public.freelancer_tasks ADD COLUMN IF NOT EXISTS payment_value numeric;
+ALTER TABLE public.freelancer_tasks ADD COLUMN IF NOT EXISTS payment_receipt_url text;
 
 -- 3. Desativar RLS para permitir leitura e escrita públicas anônimas
 -- (Padrão idêntico ao já utilizado nas tabelas clients e entries do sistema)

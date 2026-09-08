@@ -373,3 +373,302 @@ export async function generateInvoicePdf({
 
   return doc;
 }
+
+/**
+ * Generates a corporate, monochrome, professional A4 PDF for Freelancer Payroll / Fechamento
+ * with the exact same visual structure, company header, table and footer watermark
+ */
+export async function generatePayrollPdf({
+  freelancer = null,
+  tasks = [],
+  totalHours = 0,
+  totalAmount = 0,
+  periodLabel = '',
+  company = {},
+  getClientName = (id) => id
+}) {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = 210;
+  const marginX = 15;
+  const contentWidth = pageWidth - marginX * 2; // 180mm
+  const rightX = marginX + contentWidth;
+
+  // ═══════ SEÇÃO 1: HEADER (EMPRESA + LOGO + METADADOS) ═══════
+  const logoData = await loadGrayscaleImage('/logo.png');
+  let companyStartX = marginX;
+  if (logoData) {
+    try {
+      doc.addImage(logoData, 'PNG', marginX, 15, 17, 17);
+      companyStartX = marginX + 21;
+    } catch (e) {}
+  }
+
+  // Company Name & Subtitle
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13.5);
+  doc.setTextColor(20, 20, 20);
+  doc.text((company.brandName || 'Matheus Raffa').toUpperCase(), companyStartX, 19);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`› ${(company.brandSubtitle || 'Inteligência Digital').toUpperCase()}`, companyStartX, 23.5);
+
+  // Company Legal Info
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(70, 70, 70);
+  doc.text(company.legalName || 'MHB Raffa Design Estratégico LTDA', companyStartX, 28);
+  doc.text(`CNPJ: ${formatCpfCnpj(company.cnpj || '')}  |  ${company.email || ''}`, companyStartX, 32);
+  if (company.phone) {
+    doc.text(`${company.phone}  |  ${company.city || ''}`, companyStartX, 36);
+  }
+
+  // Document Title (Top Right) – Badge "FECHAMENTO PRESTADOR"
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(50, 50, 50);
+  const badgeText = 'FECHAMENTO PRESTADOR';
+  const badgeWidth = doc.getTextWidth(badgeText) + 6;
+  const badgeX = rightX - badgeWidth;
+  doc.setFillColor(245, 245, 245);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(badgeX, 14, badgeWidth, 5.5, 1, 1, 'FD');
+  doc.text(badgeText, badgeX + 3, 17.8);
+
+  // Period Name (large)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 20, 20);
+  doc.text((periodLabel || 'MÊS ATUAL').toUpperCase(), rightX, 25, { align: 'right' });
+
+  // Dates: Emissão | Referência
+  const todayStr = new Date().toLocaleDateString('pt-BR');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Emissão: ${todayStr}  |  Ref: ${periodLabel || 'Período'}`, rightX, 30, { align: 'right' });
+
+  // Divider Line at Y = 40 (exact match to generateInvoicePdf)
+  const topDividerY = 40;
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, topDividerY, rightX, topDividerY);
+
+  // ═══════ SEÇÃO 2: DADOS DO PRESTADOR DE SERVIÇO ═══════
+  const prestadorTopY = 44;
+  const prestadorBoxHeight = 26;
+  doc.setFillColor(250, 250, 250);
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(marginX, prestadorTopY, contentWidth, prestadorBoxHeight, 2, 2, 'FD');
+
+  const targetName = freelancer ? freelancer.name : 'Todos os Prestadores';
+  const targetSpecialty = freelancer?.specialty || 'Prestador de Serviço';
+  const targetPhone = freelancer?.phone ? formatPhone(freelancer.phone) : 'Não informado';
+  const targetPix = freelancer?.pixKey || 'Não cadastrada';
+  const targetRate = freelancer?.hourlyRate ? formatCurrency(freelancer.hourlyRate) + '/h' : 'Valor sob demanda';
+
+  // Section Label
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text('› DADOS DO PRESTADOR DE SERVIÇO', marginX + 5, prestadorTopY + 5.5);
+
+  // Prestador Name (prominent)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(15, 15, 15);
+  doc.text(targetName, marginX + 5, prestadorTopY + 12);
+
+  // Left Column
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(70, 70, 70);
+  doc.text(`Função / Especialidade: ${targetSpecialty}`, marginX + 5, prestadorTopY + 17);
+  doc.text(`Telefone / WhatsApp: ${targetPhone}`, marginX + 5, prestadorTopY + 21.5);
+
+  // Right Column
+  doc.text(`Chave PIX: ${targetPix}`, rightX - 5, prestadorTopY + 12, { align: 'right' });
+  doc.text(`Valor da Hora Técnica: ${targetRate}`, rightX - 5, prestadorTopY + 17, { align: 'right' });
+  doc.text(`Total de Demandas: ${tasks.length}`, rightX - 5, prestadorTopY + 21.5, { align: 'right' });
+  // ═══════ SEÇÃO 3: TABELA DE DEMANDAS / TAREFAS ═══════
+  const tableStartY = prestadorTopY + prestadorBoxHeight + 8;
+
+  // Section Label
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text('› DETALHAMENTO DOS SERVIÇOS PRESTADOS', marginX, tableStartY - 2);
+
+  // Demand Count (right-aligned)
+  const entryCountText = `${tasks.length} demanda${tasks.length === 1 ? '' : 's'}`;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text(entryCountText, rightX, tableStartY - 2, { align: 'right' });
+
+  const fRate = freelancer ? (parseFloat(freelancer.hourlyRate) || 0) : 0;
+  const tableRows = tasks.length === 0
+    ? [['-', 'Nenhum serviço registrado neste período.', '-', '-', '-', '0,0h', '-']]
+    : tasks.map(t => {
+        const cName = getClientName ? getClientName(t.clientId) : (t.clientId || '-');
+        const h = parseFloat(t.hours) || 0;
+        const subtotal = h * fRate;
+
+        return [
+          t.title || 'Sem título',
+          cName,
+          t.category || 'Digital',
+          formatDate(t.requestDate),
+          formatDate(t.actualDeliveryDate),
+          `${h.toFixed(1).replace('.', ',')}h`,
+          fRate > 0 ? formatCurrency(subtotal) : '-'
+        ];
+      });
+
+  const totalHoursStr = `${totalHours.toFixed(1).replace('.', ',')}h`;
+  const totalAmountStr = fRate > 0 ? formatCurrency(totalAmount) : '-';
+
+  autoTable(doc, {
+    startY: tableStartY,
+    margin: { left: marginX, right: marginX },
+    head: [['Demanda / Atividade', 'Cliente', 'Categoria', 'Solicitado', 'Entregue', 'Horas', 'Subtotal']],
+    body: tableRows,
+    foot: [['Total de Horas Realizadas:', '', '', '', '', totalHoursStr, totalAmountStr]],
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 30, 30],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      cellPadding: 3.2,
+      halign: 'left'
+    },
+    columnStyles: {
+      0: { cellWidth: 48, halign: 'left', fontStyle: 'bold' },
+      1: { cellWidth: 32, halign: 'left' },
+      2: { cellWidth: 26, halign: 'left' },
+      3: { cellWidth: 19, halign: 'center' },
+      4: { cellWidth: 19, halign: 'center' },
+      5: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
+      6: { cellWidth: 20, halign: 'right', fontStyle: 'bold' }
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      textColor: [30, 30, 30],
+      cellPadding: 2.8
+    },
+    alternateRowStyles: {
+      fillColor: [248, 248, 248]
+    },
+    footStyles: {
+      fillColor: [242, 242, 242],
+      textColor: [20, 20, 20],
+      fontStyle: 'bold',
+      fontSize: 8,
+      cellPadding: 3.2
+    },
+    didParseCell: function (data) {
+      if (data.section === 'foot') {
+        if (data.column.index === 0) {
+          data.cell.colSpan = 5;
+          data.cell.styles.halign = 'right';
+        }
+      }
+    }
+  });
+
+  const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : tableStartY + 40;
+
+  // ═══════ SEÇÃO 4: RESUMO FINANCEIRO (BOXES LADO A LADO) ═══════
+  const summaryTopY = finalY + 7;
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.5);
+  doc.line(marginX, summaryTopY, rightX, summaryTopY);
+
+  const sectionLabelY = summaryTopY + 7;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text('› RESUMO FINANCEIRO DO FECHAMENTO', marginX, sectionLabelY);
+
+  const boxesTopY = sectionLabelY + 4;
+  const summaryBoxWidth = 72;
+  const summaryBoxHeight = 32;
+  const summaryBoxX = rightX - summaryBoxWidth;
+  const payBoxWidth = summaryBoxX - marginX - 6;
+
+  // Left Box: Dados PIX e Quitação
+  doc.setFillColor(250, 250, 250);
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(marginX, boxesTopY, payBoxWidth, summaryBoxHeight, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Dados para Pagamento via PIX (Asaas)', marginX + 4, boxesTopY + 7);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(70, 70, 70);
+  doc.text(`Favorecido: ${targetName}`, marginX + 4, boxesTopY + 13);
+  doc.text(`Chave PIX: ${targetPix}`, marginX + 4, boxesTopY + 18);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 30, 30);
+  doc.text(`Status: Fechamento Aprovado para Transferência`, marginX + 4, boxesTopY + 24);
+
+  // Right Box: Totais
+  doc.setFillColor(250, 250, 250);
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(summaryBoxX, boxesTopY, summaryBoxWidth, summaryBoxHeight, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Total de Horas Realizadas:', summaryBoxX + 4, boxesTopY + 8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(20, 20, 20);
+  doc.text(totalHoursStr, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 8, { align: 'right' });
+
+  if (freelancer?.hourlyRate > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Valor da Hora:', summaryBoxX + 4, boxesTopY + 15);
+    doc.text(`${formatCurrency(freelancer.hourlyRate)}/h`, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 15, { align: 'right' });
+  }
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.3);
+  doc.line(summaryBoxX + 4, boxesTopY + 20, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 20);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(20, 20, 20);
+  doc.text('Total a Pagar:', summaryBoxX + 4, boxesTopY + 27);
+  doc.setFontSize(11.5);
+  doc.text(formatCurrency(totalAmount), summaryBoxX + summaryBoxWidth - 4, boxesTopY + 27, { align: 'right' });
+
+  // ═══════ SEÇÃO 5: FOOTER WATERMARK ═══════
+  const footerY = 284;
+  doc.setDrawColor(220, 220, 220);
+  doc.setLineWidth(0.2);
+  doc.line(marginX, footerY, rightX, footerY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 140);
+  doc.text(`${company.brandName || 'Matheus Raffa'} | ${company.brandSubtitle || 'Inteligência Digital'} | ${company.website || 'matheusraffa.com.br'}`, marginX, footerY + 5);
+  doc.text(`${company.email || 'contato@matheusraffa.com.br'} | ${company.phone || ''}`, rightX, footerY + 5, { align: 'right' });
+
+  return doc;
+}

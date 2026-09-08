@@ -28,11 +28,16 @@ import {
   ChevronDown,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Receipt,
+  CreditCard,
+  Layers
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
+import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType } from '../utils/asaasIntegration';
+import { generatePayrollPdf } from '../utils/pdfGenerator';
 
 const CATEGORIES = [
   'Digital',
@@ -246,7 +251,9 @@ export default function FreelancerManager({
   onDeleteFreelancer,
   onAddTask,
   onUpdateTask,
-  onDeleteTask
+  onDeleteTask,
+  onBatchUpdateTasks,
+  onBatchDeleteTasks
 }) {
   const [activeSubTab, setActiveSubTab] = useState('tasks'); // 'tasks', 'freelancers', 'payroll'
   
@@ -259,6 +266,23 @@ export default function FreelancerManager({
   // Task Table Sorting
   const [taskSortField, setTaskSortField] = useState('requestDate');
   const [taskSortOrder, setTaskSortOrder] = useState('desc');
+
+  // Batch Selection & Operations
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchUpdates, setBatchUpdates] = useState({
+    clientId: '',
+    freelancerId: '',
+    category: '',
+    status: ''
+  });
+
+  // PIX Payments via Asaas
+  const [isPixPaymentModalOpen, setIsPixPaymentModalOpen] = useState(false);
+  const [pixScheduleDate, setPixScheduleDate] = useState('');
+  const [isSubmittingPix, setIsSubmittingPix] = useState(false);
+  const [pixSuccessData, setPixSuccessData] = useState(null);
+  const [viewingReceiptTask, setViewingReceiptTask] = useState(null);
 
   const handleHeaderSort = (field) => {
     if (taskSortField === field) {
@@ -276,10 +300,19 @@ export default function FreelancerManager({
       : <ArrowDown size={11} className="text-yellow-600 ml-1.5 inline-block shrink-0" />;
   };
 
-  // Payroll filters
-  const [payrollMonth, setPayrollMonth] = useState(() => {
+  // Payroll Period Filters (Mês Atual, Mês Anterior, Selecionar Mês, Período Customizado)
+  const [payrollPeriodFilter, setPayrollPeriodFilter] = useState('current_month');
+  const [payrollSelectedMonth, setPayrollSelectedMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [payrollCustomStartDate, setPayrollCustomStartDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  });
+  const [payrollCustomEndDate, setPayrollCustomEndDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
   });
   const [payrollFreelancerId, setPayrollFreelancerId] = useState('all');
 
@@ -385,7 +418,7 @@ export default function FreelancerManager({
     // Determina o mês de referência da demanda (data de pedido da demanda ou mês do fechamento)
     const targetMonth = (taskForm.requestDate && taskForm.requestDate.length >= 7)
       ? taskForm.requestDate.substring(0, 7)
-      : payrollMonth;
+      : payrollSelectedMonth;
 
     return clients
       .filter(c => {
@@ -426,7 +459,7 @@ export default function FreelancerManager({
         sublabel: c.cnpj ? formatCpfCnpj(c.cnpj) : '',
         keywords: `${c.cnpj || ''} ${c.email || ''}`
       }));
-  }, [clients, taskForm.clientId, taskForm.requestDate, payrollMonth, entries]);
+  }, [clients, taskForm.clientId, taskForm.requestDate, payrollSelectedMonth, entries]);
 
   const freelancerOptions = useMemo(() => {
     return [...freelancers]
@@ -545,12 +578,64 @@ export default function FreelancerManager({
     });
   }, [tasks, taskStatusFilter, taskFreelancerFilter, taskClientFilter, taskSearchTerm, clients, freelancers, taskSortField, taskSortOrder]);
 
-  // Cálculos de Fechamento / Folha de Pagamento
+  // Intervalo de datas do período de fechamento (Mês Atual, Mês Anterior, Selecionar Mês, Customizado)
+  const payrollDateRange = useMemo(() => {
+    const today = new Date();
+    if (payrollPeriodFilter === 'current_month') {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+      return { start, end };
+    }
+    if (payrollPeriodFilter === 'prev_month') {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split('T')[0];
+      const end = new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split('T')[0];
+      return { start, end };
+    }
+    if (payrollPeriodFilter === 'select_month') {
+      if (!payrollSelectedMonth || !payrollSelectedMonth.includes('-')) {
+        const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        const end = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+        return { start, end };
+      }
+      const [y, m] = payrollSelectedMonth.split('-').map(Number);
+      const start = new Date(y, m - 1, 1).toISOString().split('T')[0];
+      const end = new Date(y, m, 0).toISOString().split('T')[0];
+      return { start, end };
+    }
+    if (payrollPeriodFilter === 'custom') {
+      return {
+        start: payrollCustomStartDate || '2000-01-01',
+        end: payrollCustomEndDate || '2099-12-31'
+      };
+    }
+    return { start: '2000-01-01', end: '2099-12-31' };
+  }, [payrollPeriodFilter, payrollSelectedMonth, payrollCustomStartDate, payrollCustomEndDate]);
+
+  const payrollPeriodLabel = useMemo(() => {
+    if (payrollPeriodFilter === 'current_month') {
+      const today = new Date();
+      return `Mês Atual (${today.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })})`;
+    }
+    if (payrollPeriodFilter === 'prev_month') {
+      const today = new Date();
+      const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      return `Mês Anterior (${prevDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })})`;
+    }
+    if (payrollPeriodFilter === 'select_month') {
+      return getMonthNamePT(payrollSelectedMonth);
+    }
+    if (payrollPeriodFilter === 'custom') {
+      return `${formatDateBR(payrollCustomStartDate)} a ${formatDateBR(payrollCustomEndDate)}`;
+    }
+    return 'Período Completo';
+  }, [payrollPeriodFilter, payrollSelectedMonth, payrollCustomStartDate, payrollCustomEndDate]);
+
+  // Cálculos de Fechamento / Folha de Pagamento por Intervalo
   const payrollData = useMemo(() => {
-    // Filtra tarefas do mês selecionado
+    const { start, end } = payrollDateRange;
     const monthTasks = tasks.filter(t => {
       const date = t.actualDeliveryDate || t.requestDate || '';
-      if (!date.startsWith(payrollMonth)) return false;
+      if (date < start || date > end) return false;
       if (payrollFreelancerId !== 'all' && t.freelancerId !== payrollFreelancerId) return false;
       return true;
     });
@@ -588,7 +673,181 @@ export default function FreelancerManager({
       byClient: Object.entries(byClientMap).map(([name, hours]) => ({ name, hours })),
       byCategory: Object.entries(byCategoryMap).map(([name, hours]) => ({ name, hours }))
     };
-  }, [tasks, payrollMonth, payrollFreelancerId, freelancers, clients]);
+  }, [tasks, payrollDateRange, payrollFreelancerId, freelancers, clients]);
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CÁLCULOS E AÇÕES EM LOTE (SELEÇÃO, SOMA DE HORAS, PIX, EXCLUSÃO)
+  // ═══════════════════════════════════════════════════════════════════════
+  const selectedTasksList = useMemo(() => {
+    return tasks.filter(t => selectedTaskIds.has(t.id));
+  }, [tasks, selectedTaskIds]);
+
+  const selectedTasksTotalHours = useMemo(() => {
+    return selectedTasksList.reduce((sum, t) => sum + (parseFloat(t.hours) || 0), 0);
+  }, [selectedTasksList]);
+
+  // Verifica se todas as demandas selecionadas pertencem ao mesmo prestador
+  const selectedTasksFreelancer = useMemo(() => {
+    if (selectedTasksList.length === 0) return null;
+    const firstFreelaId = selectedTasksList[0].freelancerId;
+    const allSame = selectedTasksList.every(t => t.freelancerId === firstFreelaId);
+    if (!allSame) return null;
+    return getFreelancer(firstFreelaId) || null;
+  }, [selectedTasksList, freelancers]);
+
+  const selectedTasksTotalAmount = useMemo(() => {
+    if (!selectedTasksFreelancer) return 0;
+    const rate = parseFloat(selectedTasksFreelancer.hourlyRate) || 0;
+    return selectedTasksTotalHours * rate;
+  }, [selectedTasksTotalHours, selectedTasksFreelancer]);
+
+  const handleToggleSelectAll = () => {
+    if (selectedTaskIds.size === filteredTasks.length && filteredTasks.length > 0) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
+    }
+  };
+
+  const handleToggleSelectTask = (taskId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedTaskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchApplyField = async (field, value) => {
+    if (selectedTaskIds.size === 0) return;
+    if (onBatchUpdateTasks) {
+      await onBatchUpdateTasks(Array.from(selectedTaskIds), { [field]: value });
+    }
+  };
+
+  const handleBatchSubmitModal = async (e) => {
+    e.preventDefault();
+    const updates = {};
+    if (batchUpdates.clientId) updates.clientId = batchUpdates.clientId;
+    if (batchUpdates.freelancerId) updates.freelancerId = batchUpdates.freelancerId;
+    if (batchUpdates.category) updates.category = batchUpdates.category;
+    if (batchUpdates.status) updates.status = batchUpdates.status;
+
+    if (Object.keys(updates).length === 0) {
+      alert('Nenhum campo selecionado para alteração.');
+      return;
+    }
+
+    if (onBatchUpdateTasks) {
+      await onBatchUpdateTasks(Array.from(selectedTaskIds), updates);
+    }
+    setIsBatchModalOpen(false);
+    setBatchUpdates({ clientId: '', freelancerId: '', category: '', status: '' });
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedTaskIds.size === 0) return;
+    if (!confirm(`Deseja realmente excluir as ${selectedTaskIds.size} demandas selecionadas? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+    if (onBatchDeleteTasks) {
+      await onBatchDeleteTasks(Array.from(selectedTaskIds));
+      setSelectedTaskIds(new Set());
+    }
+  };
+
+  const handleOpenPixPaymentModal = () => {
+    if (selectedTasksList.length === 0) return;
+
+    if (!selectedTasksFreelancer) {
+      alert('Para realizar o pagamento PIX em lote, todas as demandas selecionadas devem pertencer ao mesmo prestador/freelancer.');
+      return;
+    }
+
+    if (!selectedTasksFreelancer.pixKey) {
+      alert(`O prestador ${selectedTasksFreelancer.name} não possui chave PIX cadastrada. Acesse a aba Prestadores e adicione a chave PIX antes de efetuar o pagamento.`);
+      return;
+    }
+
+    setPixScheduleDate('');
+    setIsPixPaymentModalOpen(true);
+  };
+
+  const handleConfirmPixTransfer = async () => {
+    if (!selectedTasksFreelancer) return;
+    setIsSubmittingPix(true);
+    try {
+      const pixKeyType = detectPixKeyType(selectedTasksFreelancer.pixKey);
+      const res = await createAsaasPixTransfer({
+        value: selectedTasksTotalAmount,
+        pixKey: selectedTasksFreelancer.pixKey,
+        pixKeyType,
+        description: `Fechamento ${selectedTasksFreelancer.name} (${selectedTasksTotalHours.toFixed(1)}h)`,
+        scheduleDate: pixScheduleDate || null
+      });
+
+      const paymentDate = new Date().toISOString().split('T')[0];
+      const updates = {
+        status: 'paid',
+        paymentId: res.id || `pix_${Date.now()}`,
+        paymentDate: paymentDate,
+        paymentValue: selectedTasksTotalAmount,
+        paymentReceiptUrl: res.receiptUrl || null
+      };
+
+      if (onBatchUpdateTasks) {
+        await onBatchUpdateTasks(Array.from(selectedTaskIds), updates);
+      }
+
+      setIsPixPaymentModalOpen(false);
+      setPixSuccessData({
+        transfer: res,
+        freelancer: selectedTasksFreelancer,
+        tasks: selectedTasksList,
+        totalHours: selectedTasksTotalHours,
+        totalAmount: selectedTasksTotalAmount,
+        date: paymentDate
+      });
+      setSelectedTaskIds(new Set());
+    } catch (err) {
+      alert('Erro ao realizar transferência no Asaas: ' + (err.message || 'Falha na conexão'));
+    } finally {
+      setIsSubmittingPix(false);
+    }
+  };
+
+  const handleSendWhatsAppReceipt = (data) => {
+    const freela = data.freelancer;
+    const phoneDigits = (freela.phone || '').replace(/\D/g, '');
+    let text = `*COMPROVANTE DE PAGAMENTO PIX - MHB RAFFA*\n`;
+    text += `Olá, ${freela.name}!\n\n`;
+    text += `Seu pagamento referente às demandas prestadas foi efetuado/agendado via PIX com sucesso!\n\n`;
+    text += `📋 *DEMANDAS QUITADAS:*\n`;
+    data.tasks.forEach((t, i) => {
+      text += `${i + 1}. *${t.title}* - ${parseFloat(t.hours).toFixed(1)}h (${getClientName(t.clientId)})\n`;
+    });
+    text += `\n━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `⏱️ *Total de Horas:* ${data.totalHours.toFixed(1).replace('.', ',')}h\n`;
+    text += `💰 *Valor Total Pago:* ${formatCurrency(data.totalAmount)}\n`;
+    text += `🔑 *Chave PIX:* ${freela.pixKey}\n`;
+    if (data.transfer?.id) {
+      text += `🆔 *ID Transferência Asaas:* ${data.transfer.id}\n`;
+    }
+    text += `📅 *Data:* ${formatDateBR(data.date)}\n`;
+    text += `\nAgradecemos muito pela dedicação e parceria!\n`;
+    text += `*${companyInfo?.brandName || 'Matheus Raffa'}*`;
+
+    navigator.clipboard.writeText(text);
+    if (phoneDigits) {
+      window.open(`https://wa.me/55${phoneDigits}?text=${encodeURIComponent(text)}`, '_blank');
+    } else {
+      alert('Relatório copiado para a área de transferência! (O prestador não possui telefone com WhatsApp cadastrado)');
+    }
+  };
 
   // Handlers de Tarefas
   const handleOpenNewTaskModal = () => {
@@ -713,12 +972,12 @@ export default function FreelancerManager({
   const handleCopyWhatsAppSummary = () => {
     const freela = getFreelancer(payrollFreelancerId);
     const targetName = freela ? freela.name : 'Equipe';
-    const monthName = getMonthNamePT(payrollMonth);
+    const periodName = payrollPeriodLabel;
     const pixInfo = freela?.pixKey ? `\n🔑 Chave PIX: ${freela.pixKey}` : '';
 
-    let text = `*FECHAMENTO DE HORAS - ${monthName.toUpperCase()}*\n`;
+    let text = `*FECHAMENTO DE SERVIÇOS - ${periodName.toUpperCase()}*\n`;
     text += `Olá, ${targetName}!\n\n`;
-    text += `Segue o espelho de demandas concluídas no mês de ${monthName}:\n\n`;
+    text += `Segue o espelho de demandas concluídas no período (${periodName}):\n\n`;
 
     payrollData.deliveredMonthTasks.forEach((t, i) => {
       const clientName = getClientName(t.clientId);
@@ -743,81 +1002,25 @@ export default function FreelancerManager({
     setTimeout(() => setCopiedWhatsAppMsg(false), 2500);
   };
 
-  // Exportar PDF de Fechamento do Freelancer
-  const handleExportPayrollPDF = () => {
+  // Exportar PDF de Fechamento do Freelancer (Layout Corporativo Idêntico ao Relatório de Clientes)
+  const handleExportPayrollPDF = async () => {
     try {
-      const doc = new jsPDF();
       const freela = getFreelancer(payrollFreelancerId);
-      const targetName = freela ? freela.name : 'Todos os Prestadores';
-      const monthName = getMonthNamePT(payrollMonth);
-
-      // Header
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text(companyInfo?.brandName || 'Matheus Raffa', 14, 18);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100);
-      doc.text('Demonstrativo de Fechamento de Prestadores de Serviço', 14, 24);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.setTextColor(20);
-      doc.text(`Período: ${monthName.toUpperCase()}`, 196, 18, { align: 'right' });
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Prestador: ${targetName}`, 196, 24, { align: 'right' });
-
-      doc.setDrawColor(220);
-      doc.line(14, 28, 196, 28);
-
-      // Tabela de tarefas
-      const tableRows = payrollData.deliveredMonthTasks.map(t => {
-        const cName = getClientName(t.clientId);
-        const fRate = freela ? (parseFloat(freela.hourlyRate) || 0) : 0;
-        const subtotal = (parseFloat(t.hours) || 0) * fRate;
-
-        return [
-          t.title,
-          cName,
-          t.category || 'Digital',
-          formatDateBR(t.requestDate),
-          formatDateBR(t.actualDeliveryDate),
-          `${parseFloat(t.hours).toFixed(1).replace('.', ',')}h`,
-          fRate > 0 ? formatCurrency(subtotal) : '-'
-        ];
-      });
-
-      autoTable(doc, {
-        startY: 34,
-        head: [['Demanda / Tarefa', 'Cliente', 'Categoria', 'Solicitado', 'Entregue', 'Horas', 'Subtotal']],
-        body: tableRows,
-        theme: 'striped',
-        headStyles: { fillColor: [24, 24, 27], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-        styles: { fontSize: 8, cellPadding: 3 },
-        columnStyles: {
-          5: { halign: 'center' },
-          6: { halign: 'right' }
-        }
-      });
-
-      const finalY = doc.lastAutoTable.finalY + 10;
-
-      // Resumo final
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.text(`Total de Horas Realizadas: ${payrollData.totalHours.toFixed(1).replace('.', ',')}h`, 14, finalY);
-      if (freela?.hourlyRate > 0) {
-        doc.text(`Valor Total a Pagar: ${formatCurrency(payrollData.totalAmountToPay)}`, 196, finalY, { align: 'right' });
-      }
-      if (freela?.pixKey) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.text(`Chave PIX: ${freela.pixKey}`, 14, finalY + 6);
-      }
-
+      const targetName = freela ? freela.name : 'Todos_Prestadores';
       const safeName = targetName.replace(/[^a-zA-Z0-9]/g, '_');
-      doc.save(`Fechamento_${safeName}_${payrollMonth}.pdf`);
+      const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+
+      const doc = await generatePayrollPdf({
+        freelancer: freela,
+        tasks: payrollData.deliveredMonthTasks,
+        totalHours: payrollData.totalHours,
+        totalAmount: payrollData.totalAmountToPay,
+        periodLabel: payrollPeriodLabel,
+        company: companyInfo,
+        getClientName
+      });
+
+      doc.save(`Fechamento_${safeName}_${safePeriod}.pdf`);
     } catch (err) {
       alert('Erro ao gerar PDF: ' + err.message);
     }
@@ -840,7 +1043,8 @@ export default function FreelancerManager({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `fechamento_freelancers_${payrollMonth}.csv`);
+    const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute('download', `fechamento_freelancers_${safePeriod}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -975,6 +1179,113 @@ export default function FreelancerManager({
             </button>
           </div>
 
+          {/* Barra Flutuante / Fixa de Ações em Lote */}
+          {selectedTaskIds.size > 0 && (
+            <div className="sticky top-2 z-30 bg-gray-950 text-white border border-gray-800 rounded-2xl p-3.5 shadow-2xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in-0 slide-in-from-top-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800">
+                  <Layers size={15} className="text-yellow-400" />
+                  <span className="text-xs font-bold text-gray-200">
+                    {selectedTaskIds.size} de {filteredTasks.length} selecionada{selectedTaskIds.size === 1 ? '' : 's'}
+                  </span>
+                </div>
+
+                {/* Soma Destacada de Horas Selecionadas */}
+                <div className="flex items-center gap-2 bg-yellow-400 text-gray-950 px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs">
+                  <Clock size={14} />
+                  <span>Total Selecionado: {selectedTasksTotalHours.toFixed(1).replace('.', ',')}h</span>
+                </div>
+
+                {/* Subtotal se pertencer ao mesmo prestador */}
+                {selectedTasksFreelancer && (
+                  <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-300 bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800 font-medium">
+                    <span>{selectedTasksFreelancer.name}:</span>
+                    <span className="font-bold text-emerald-400 font-title">{formatCurrency(selectedTasksTotalAmount)}</span>
+                    <span className="text-[10px] text-gray-400">({formatCurrency(selectedTasksFreelancer.hourlyRate)}/h)</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Botão de Pagamento PIX via Asaas */}
+                <button
+                  type="button"
+                  onClick={handleOpenPixPaymentModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer hover:scale-102 active:scale-98"
+                  title="Efetuar pagamento das demandas selecionadas via PIX no Asaas"
+                >
+                  <CreditCard size={14} />
+                  <span>Realizar Pagamento PIX</span>
+                </button>
+
+                {/* Alteração Rápida de Status */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleBatchApplyField('status', e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  defaultValue=""
+                  className="bg-gray-900 border border-gray-800 text-gray-200 text-xs rounded-xl px-2.5 py-1.5 font-medium focus:outline-none focus:border-yellow-400 cursor-pointer"
+                >
+                  <option value="" disabled>Alterar Status...</option>
+                  <option value="pending">Pendente</option>
+                  <option value="in_progress">Em Andamento</option>
+                  <option value="delivered">Entregue</option>
+                  <option value="paid">Pago</option>
+                </select>
+
+                {/* Alteração Rápida de Categoria */}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleBatchApplyField('category', e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  defaultValue=""
+                  className="bg-gray-900 border border-gray-800 text-gray-200 text-xs rounded-xl px-2.5 py-1.5 font-medium focus:outline-none focus:border-yellow-400 cursor-pointer hidden sm:block"
+                >
+                  <option value="" disabled>Alterar Categoria...</option>
+                  {(categories && categories.length > 0 ? categories : CATEGORIES).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+
+                {/* Modal de Alterações em Lote Completo */}
+                <button
+                  type="button"
+                  onClick={() => setIsBatchModalOpen(true)}
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  title="Abrir editor completo de campos em lote"
+                >
+                  Mais Edições...
+                </button>
+
+                {/* Excluir Selecionadas */}
+                <button
+                  type="button"
+                  onClick={handleBatchDelete}
+                  className="p-1.5 bg-red-950/60 hover:bg-red-900 text-red-300 rounded-xl transition-colors cursor-pointer border border-red-800/40"
+                  title="Excluir demandas selecionadas"
+                >
+                  <Trash2 size={15} />
+                </button>
+
+                {/* Desmarcar todas */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedTaskIds(new Set())}
+                  className="p-1.5 text-gray-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                  title="Desmarcar todas"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Tasks Table */}
           <div className="bg-white border border-gray-200 rounded-2xl shadow-2xs overflow-hidden">
             {filteredTasks.length === 0 ? (
@@ -990,6 +1301,15 @@ export default function FreelancerManager({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px] select-none">
+                      <th className="py-3 px-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={filteredTasks.length > 0 && selectedTaskIds.size === filteredTasks.length}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+                          title="Selecionar todas as demandas visíveis"
+                        />
+                      </th>
                       <th 
                         className="py-3 px-4 cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
                         onClick={() => handleHeaderSort('title')}
@@ -1061,9 +1381,22 @@ export default function FreelancerManager({
                       const freela = getFreelancer(task.freelancerId);
                       const clientName = getClientName(task.clientId);
                       const catBadge = CATEGORY_COLORS[task.category] || CATEGORY_COLORS['Outro'] || 'bg-yellow-50 text-yellow-800 border-yellow-200';
+                      const isSelected = selectedTaskIds.has(task.id);
 
                       return (
-                        <tr key={task.id} className="hover:bg-yellow-50/30 transition-colors">
+                        <tr 
+                          key={task.id} 
+                          className={`transition-colors ${isSelected ? 'bg-yellow-50/70' : 'hover:bg-yellow-50/30'}`}
+                        >
+                          <td className="py-3 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => handleToggleSelectTask(task.id, e)}
+                              className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+                            />
+                          </td>
+
                           <td className="py-3 px-4 font-semibold text-gray-900">
                             <div className="flex flex-col gap-0.5">
                               <span className="font-bold text-gray-950 text-xs">{task.title}</span>
@@ -1129,17 +1462,31 @@ export default function FreelancerManager({
                           </td>
 
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                              task.status === 'paid' 
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
-                                : task.status === 'delivered' 
-                                ? 'bg-blue-50 text-blue-800 border-blue-200' 
-                                : task.status === 'in_progress' 
-                                ? 'bg-amber-50 text-amber-800 border-amber-200' 
-                                : 'bg-gray-100 text-gray-700 border-gray-200'
-                            }`}>
-                              {task.status === 'paid' ? 'Pago' : task.status === 'delivered' ? 'Entregue' : task.status === 'in_progress' ? 'Em Andamento' : 'Pendente'}
-                            </span>
+                            <div className="inline-flex items-center justify-center gap-1">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                task.status === 'paid' 
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                                  : task.status === 'delivered' 
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200' 
+                                  : task.status === 'in_progress' 
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                                  : 'bg-gray-100 text-gray-700 border-gray-200'
+                              }`}>
+                                {task.status === 'paid' ? 'Pago' : task.status === 'delivered' ? 'Entregue' : task.status === 'in_progress' ? 'Em Andamento' : 'Pendente'}
+                              </span>
+
+                              {/* Ícone de Comprovante quando a demanda está Paga */}
+                              {task.status === 'paid' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingReceiptTask(task)}
+                                  className="p-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-100 rounded-full transition-colors cursor-pointer"
+                                  title="Visualizar Comprovante de Pagamento PIX"
+                                >
+                                  <Receipt size={13} />
+                                </button>
+                              )}
+                            </div>
                           </td>
 
                           <td className="py-3 px-4 text-right">
@@ -1308,22 +1655,98 @@ export default function FreelancerManager({
       {activeSubTab === 'payroll' && (
         <div className="flex flex-col gap-6">
           {/* Controls / Filter bar */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                <Calendar size={14} className="text-yellow-600" />
-                <span>Mês de Fechamento:</span>
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-gray-50 text-yellow-600 rounded-xl border border-gray-200">
+                  <Calendar size={18} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Período de Fechamento</span>
+                  <span className="text-xs font-bold text-gray-900">{payrollPeriodLabel}</span>
+                </div>
               </div>
 
-              <select
-                value={payrollMonth}
-                onChange={(e) => setPayrollMonth(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-800 focus:outline-none focus:border-gray-900 cursor-pointer"
-              >
-                {uniqueMonths.map(m => (
-                  <option key={m} value={m}>{getMonthNamePT(m)}</option>
-                ))}
-              </select>
+              {/* 4 Botões de Filtro de Período */}
+              <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setPayrollPeriodFilter('current_month')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollPeriodFilter === 'current_month'
+                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                >
+                  Mês Atual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollPeriodFilter('prev_month')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollPeriodFilter === 'prev_month'
+                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                >
+                  Mês Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollPeriodFilter('select_month')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollPeriodFilter === 'select_month'
+                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                >
+                  Selecionar Mês
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollPeriodFilter('custom')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    payrollPeriodFilter === 'custom'
+                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-900 font-medium'
+                  }`}
+                >
+                  Personalizado
+                </button>
+              </div>
+
+              {payrollPeriodFilter === 'select_month' && (
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1 text-xs animate-in fade-in-0">
+                  <select
+                    value={payrollSelectedMonth}
+                    onChange={(e) => setPayrollSelectedMonth(e.target.value)}
+                    className="bg-transparent font-semibold text-gray-800 focus:outline-none cursor-pointer text-xs"
+                  >
+                    {uniqueMonths.map(m => (
+                      <option key={m} value={m}>{getMonthNamePT(m)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {payrollPeriodFilter === 'custom' && (
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs animate-in fade-in-0">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">De:</span>
+                  <input
+                    type="date"
+                    value={payrollCustomStartDate}
+                    onChange={(e) => setPayrollCustomStartDate(e.target.value)}
+                    className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                  />
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Até:</span>
+                  <input
+                    type="date"
+                    value={payrollCustomEndDate}
+                    onChange={(e) => setPayrollCustomEndDate(e.target.value)}
+                    className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                  />
+                </div>
+              )}
 
               <div className="w-56">
                 <SearchableSelect
@@ -1876,6 +2299,398 @@ export default function FreelancerManager({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 1: EDIÇÃO EM LOTE DE DEMANDAS                                   */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-200">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-950">Alteração em Lote</h3>
+                  <p className="text-xs text-gray-500">
+                    Modificando {selectedTaskIds.size} demanda{selectedTaskIds.size === 1 ? '' : 's'} selecionada{selectedTaskIds.size === 1 ? '' : 's'}.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsBatchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleBatchSubmitModal} className="flex flex-col gap-4 text-xs">
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-gray-600">
+                Preencha somente os campos que você deseja alterar em todas as demandas selecionadas. Campos em branco não serão modificados.
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Novo Cliente:</label>
+                <select
+                  value={batchUpdates.clientId}
+                  onChange={(e) => setBatchUpdates({ ...batchUpdates, clientId: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium focus:outline-none focus:border-gray-900"
+                >
+                  <option value="">-- Não alterar cliente --</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Novo Prestador / Freelancer:</label>
+                <select
+                  value={batchUpdates.freelancerId}
+                  onChange={(e) => setBatchUpdates({ ...batchUpdates, freelancerId: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium focus:outline-none focus:border-gray-900"
+                >
+                  <option value="">-- Não alterar prestador --</option>
+                  {freelancers.map(f => (
+                    <option key={f.id} value={f.id}>{f.name} ({f.specialty || 'Prestador'})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Nova Categoria:</label>
+                  <select
+                    value={batchUpdates.category}
+                    onChange={(e) => setBatchUpdates({ ...batchUpdates, category: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium focus:outline-none focus:border-gray-900"
+                  >
+                    <option value="">-- Não alterar --</option>
+                    {(categories && categories.length > 0 ? categories : CATEGORIES).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Novo Status:</label>
+                  <select
+                    value={batchUpdates.status}
+                    onChange={(e) => setBatchUpdates({ ...batchUpdates, status: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium focus:outline-none focus:border-gray-900"
+                  >
+                    <option value="">-- Não alterar --</option>
+                    <option value="pending">Pendente</option>
+                    <option value="in_progress">Em Andamento</option>
+                    <option value="delivered">Entregue</option>
+                    <option value="paid">Pago</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-gray-150 mt-2">
+                <button
+                  type="button"
+                  onClick={handleBatchDelete}
+                  className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg font-bold transition-colors cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  <span>Excluir Selecionadas</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsBatchModalOpen(false)}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-950 font-bold rounded-lg shadow-xs cursor-pointer"
+                  >
+                    Aplicar Alterações
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 2: CONFIRMAÇÃO DE PAGAMENTO PIX VIA ASAAS                       */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {isPixPaymentModalOpen && selectedTasksFreelancer && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
+                  <CreditCard size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-950">Pagamento PIX via Asaas</h3>
+                  <p className="text-xs text-gray-500">Transferência bancária automática</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => !isSubmittingPix && setIsPixPaymentModalOpen(false)}
+                disabled={isSubmittingPix}
+                className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer disabled:opacity-40"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4 text-xs">
+              {/* Prestador Card */}
+              <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Favorecido / Prestador:</span>
+                  <span className="font-bold text-gray-950 text-sm">{selectedTasksFreelancer.name}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Chave PIX:</span>
+                  <span className="font-mono font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200">
+                    {selectedTasksFreelancer.pixKey}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Tipo de Chave Detectado:</span>
+                  <span className="font-bold text-gray-800 bg-gray-200/80 px-1.5 py-0.5 rounded text-[10px]">
+                    {detectPixKeyType(selectedTasksFreelancer.pixKey)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Total Calculation Card */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col gap-2">
+                <div className="flex justify-between items-center text-emerald-900 font-medium">
+                  <span>Demandas Selecionadas:</span>
+                  <span className="font-bold">{selectedTasksList.length} tarefa{selectedTasksList.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="flex justify-between items-center text-emerald-900 font-medium">
+                  <span>Soma Total de Horas:</span>
+                  <span className="font-bold text-sm">{selectedTasksTotalHours.toFixed(1).replace('.', ',')}h</span>
+                </div>
+                <div className="flex justify-between items-center text-emerald-900 font-medium">
+                  <span>Valor da Hora Técnica:</span>
+                  <span className="font-bold">{formatCurrency(selectedTasksFreelancer.hourlyRate)}/h</span>
+                </div>
+                <div className="pt-2 border-t border-emerald-200 flex justify-between items-center text-emerald-950">
+                  <span className="font-bold text-xs">VALOR TOTAL DO PIX:</span>
+                  <span className="text-xl font-black font-title text-emerald-950">
+                    {formatCurrency(selectedTasksTotalAmount)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Schedule Date */}
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">
+                  Data de Agendamento (Opcional):
+                </label>
+                <input
+                  type="date"
+                  value={pixScheduleDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setPixScheduleDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-medium focus:outline-none focus:border-gray-900"
+                />
+                <span className="text-[11px] text-gray-400 mt-1 block">
+                  Deixe em branco para efetuar a transferência imediatamente hoje.
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-150">
+                <button
+                  type="button"
+                  disabled={isSubmittingPix}
+                  onClick={() => setIsPixPaymentModalOpen(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium cursor-pointer disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingPix || selectedTasksTotalAmount <= 0}
+                  onClick={handleConfirmPixTransfer}
+                  className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingPix ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Processando no Asaas...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={15} />
+                      <span>Confirmar e Transferir PIX</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 3: SUCESSO PIX & DISPARO DE COMPROVANTE VIA WHATSAPP            */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {pixSuccessData && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95 text-center">
+            <div className="w-14 h-14 mx-auto mb-3 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-200">
+              <CheckCircle2 size={32} />
+            </div>
+
+            <h3 className="text-base font-bold text-gray-950 mb-1">
+              Transferência PIX Realizada com Sucesso!
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+              As demandas foram atualizadas automaticamente para o status <strong>"Pago"</strong>.
+            </p>
+
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-left text-xs flex flex-col gap-2 mb-4">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Prestador:</span>
+                <span className="font-bold text-gray-900">{pixSuccessData.freelancer.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Valor Transferido:</span>
+                <span className="font-bold text-emerald-600 font-title text-sm">{formatCurrency(pixSuccessData.totalAmount)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Total de Horas:</span>
+                <span className="font-bold text-gray-900">{pixSuccessData.totalHours.toFixed(1).replace('.', ',')}h</span>
+              </div>
+              {pixSuccessData.transfer?.id && (
+                <div className="flex justify-between pt-1 border-t border-gray-200 font-mono text-[11px]">
+                  <span className="text-gray-500">ID Asaas:</span>
+                  <span className="font-bold text-gray-800">{pixSuccessData.transfer.id}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-left text-[11px] mb-4 flex items-start gap-2">
+              <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Atenção:</strong> Se a sua conta do Asaas exigir aprovação por Token de segurança no aplicativo celular, acesse o app do Asaas para autorizar a transferência.
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => handleSendWhatsAppReceipt(pixSuccessData)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+              >
+                <Send size={14} />
+                <span>Enviar Comprovante WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPixSuccessData(null)}
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 4: DETALHES DO COMPROVANTE DIGITAL (DEMANDA PAGA)               */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {viewingReceiptTask && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
+                  <Receipt size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-950">Comprovante de Quitação</h3>
+                  <p className="text-xs text-gray-500">Registro de pagamento de demanda</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setViewingReceiptTask(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-1.5">
+                <span className="text-gray-400 font-bold text-[10px] uppercase">Demanda</span>
+                <span className="font-bold text-gray-900 text-sm">{viewingReceiptTask.title}</span>
+                <span className="text-gray-500">Cliente: {getClientName(viewingReceiptTask.clientId)}</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-gray-400 font-bold text-[10px] uppercase block">Prestador</span>
+                  <span className="font-bold text-gray-900">{getFreelancerName(viewingReceiptTask.freelancerId)}</span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-gray-400 font-bold text-[10px] uppercase block">Horas Realizadas</span>
+                  <span className="font-bold text-gray-900">{parseFloat(viewingReceiptTask.hours || 0).toFixed(1).replace('.', ',')}h</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex flex-col gap-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-emerald-900 font-bold text-[10px] uppercase">Valor Quitado</span>
+                  <span className="font-bold text-gray-500 text-[10px]">
+                    Data: {formatDateBR(viewingReceiptTask.paymentDate || viewingReceiptTask.actualDeliveryDate)}
+                  </span>
+                </div>
+                <span className="text-lg font-black text-emerald-950 font-title">
+                  {formatCurrency(viewingReceiptTask.paymentValue || ((parseFloat(viewingReceiptTask.hours) || 0) * (getFreelancer(viewingReceiptTask.freelancerId)?.hourlyRate || 0)))}
+                </span>
+                {viewingReceiptTask.paymentId && (
+                  <span className="text-[10px] text-emerald-800 font-mono pt-1 border-t border-emerald-200">
+                    ID Transação: {viewingReceiptTask.paymentId}
+                  </span>
+                )}
+              </div>
+
+              {viewingReceiptTask.paymentReceiptUrl && (
+                <a
+                  href={viewingReceiptTask.paymentReceiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-900 text-white rounded-xl font-bold text-xs hover:bg-gray-800 transition-colors"
+                >
+                  <ExternalLink size={14} />
+                  <span>Visualizar Comprovante Asaas</span>
+                </a>
+              )}
+
+              <div className="flex justify-end pt-3 border-t border-gray-150">
+                <button
+                  type="button"
+                  onClick={() => setViewingReceiptTask(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

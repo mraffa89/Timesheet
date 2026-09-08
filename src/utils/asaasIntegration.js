@@ -700,3 +700,155 @@ export async function attachDocumentToAsaasPayment(paymentId, pdfBlob, fileName)
   }
 }
 
+/**
+ * Detecta o tipo de chave PIX a partir do formato da string
+ */
+export function detectPixKeyType(key) {
+  if (!key) return null;
+  const clean = String(key).trim();
+  
+  if (clean.includes('@')) {
+    return 'EMAIL';
+  }
+  
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(clean)) {
+    return 'EVP';
+  }
+  
+  const onlyDigits = clean.replace(/\D/g, '');
+  if (onlyDigits.length === 11) {
+    return 'CPF';
+  }
+  if (onlyDigits.length === 14) {
+    return 'CNPJ';
+  }
+  if (clean.startsWith('+') || (onlyDigits.length >= 10 && onlyDigits.length <= 13)) {
+    return 'PHONE';
+  }
+  
+  return 'EVP';
+}
+
+/**
+ * Cria ou agenda uma transferência via PIX no Asaas
+ * @param {Object} params
+ * @param {number} params.value - Valor a ser transferido (em R$)
+ * @param {string} params.pixKey - Chave PIX do destinatário
+ * @param {string} [params.pixKeyType] - Tipo da chave (CPF, CNPJ, EMAIL, PHONE, EVP)
+ * @param {string} [params.description] - Descrição do pagamento
+ * @param {string} [params.scheduleDate] - Data agendada (YYYY-MM-DD), opcional
+ */
+export async function createAsaasPixTransfer({
+  value,
+  pixKey,
+  pixKeyType = null,
+  description = 'Pagamento de Prestador MHB Raffa',
+  scheduleDate = null
+}) {
+  const token = (localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
+
+  if (!token) {
+    throw new Error('Chave de API do Asaas não configurada nas Configurações.');
+  }
+
+  const numericValue = parseFloat(value);
+  if (!numericValue || numericValue <= 0) {
+    throw new Error('Valor inválido para transferência PIX.');
+  }
+
+  if (!pixKey || !String(pixKey).trim()) {
+    throw new Error('Chave PIX do prestador não informada.');
+  }
+
+  const detectedType = pixKeyType || detectPixKeyType(pixKey);
+  let cleanKey = String(pixKey).trim();
+  if (detectedType === 'CPF' || detectedType === 'CNPJ') {
+    cleanKey = cleanKey.replace(/\D/g, '');
+  } else if (detectedType === 'PHONE') {
+    const digits = cleanKey.replace(/\D/g, '');
+    cleanKey = cleanKey.startsWith('+') ? cleanKey : `+55${digits}`;
+  }
+
+  const payload = {
+    value: numericValue,
+    operationType: 'PIX',
+    pixAddressKey: cleanKey,
+    pixAddressKeyType: detectedType,
+    description: (description || 'Pagamento de Demandas MHB Raffa').slice(0, 140)
+  };
+
+  if (scheduleDate) {
+    payload.scheduleDate = scheduleDate;
+  }
+
+  const baseUrl = getAsaasBaseUrl(env);
+
+  try {
+    const response = await fetch(`${baseUrl}/transfers`, {
+      method: 'POST',
+      headers: {
+        'access_token': token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Erro ${response.status}: ${response.statusText}`;
+      try {
+        const errData = await response.json();
+        if (errData.errors && errData.errors.length > 0) {
+          errorMsg = errData.errors.map(e => e.description).join(', ');
+        }
+      } catch (e) {}
+      throw new Error(`Falha no Asaas: ${errorMsg}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      transfer: data,
+      transferId: data.id,
+      status: data.status,
+      dateCreated: data.dateCreated,
+      scheduleDate: data.scheduleDate,
+      value: data.value,
+      receiptUrl: data.transactionReceiptUrl || null
+    };
+  } catch (err) {
+    console.error('Erro ao criar transferência PIX no Asaas:', err);
+    throw err;
+  }
+}
+
+/**
+ * Consulta o comprovante de uma transferência realizada no Asaas
+ */
+export async function fetchAsaasTransferReceipt(transferId) {
+  const token = (localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
+
+  if (!token || !transferId) return null;
+
+  const baseUrl = getAsaasBaseUrl(env);
+
+  try {
+    const response = await fetch(`${baseUrl}/transfers/${transferId}`, {
+      method: 'GET',
+      headers: {
+        'access_token': token,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.warn('Erro ao buscar comprovante da transferência:', err);
+    return null;
+  }
+}
+
