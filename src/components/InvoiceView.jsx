@@ -462,7 +462,17 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
       }
 
       // Feedback amigável
-      alert(`Cobrança gerada com sucesso no Asaas via Boleto/PIX! O QR Code PIX e o link de acesso rápido foram inseridos no demonstrativo.${attachedMsg}`);
+      let nfeMsg = '';
+      if (result.invoiceScheduled) {
+        const issLabel = result.retainIss 
+          ? 'Tomador do ISS (Retenção na fonte por conta do cliente)' 
+          : 'ISS por conta do prestador (Sem retenção)';
+        nfeMsg = `\n\n🧾 Nota Fiscal (NFS-e): Programada com sucesso para emissão automática após o pagamento!\n• Enquadramento ISS: ${issLabel}`;
+      } else if (result.invoiceMessage) {
+        nfeMsg = `\n\nℹ️ ${result.invoiceMessage}`;
+      }
+
+      alert(`Cobrança gerada com sucesso no Asaas via Boleto/PIX! O QR Code PIX e o link de acesso rápido foram inseridos no demonstrativo.${attachedMsg}${nfeMsg}`);
     } catch (err) {
       alert("Erro ao processar integração com Asaas: " + err.message);
     } finally {

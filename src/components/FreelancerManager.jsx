@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Users, 
   Briefcase, 
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
 
 const CATEGORIES = [
   'Digital',
@@ -58,6 +59,176 @@ const AVAILABLE_TABS = [
   { id: 'clients', label: 'Visualizar Clientes' },
   { id: 'dashboard', label: 'Visualizar Dashboard' }
 ];
+
+/**
+ * Componente reutilizável de seleção com busca dinâmica por escrita e autopreenchimento
+ */
+function SearchableSelect({
+  value,
+  onChange,
+  options = [],
+  placeholder = 'Selecione...',
+  searchPlaceholder = 'Digite para filtrar...',
+  allowCustom = false,
+  icon: IconComponent = null,
+  required = false,
+  className = '',
+  buttonClassName = ''
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(opt => String(opt.value) === String(value));
+
+  const filteredOptions = useMemo(() => {
+    const term = search.toLowerCase().trim();
+    if (!term) return options;
+    return options.filter(opt => {
+      const l = (opt.label || '').toLowerCase();
+      const sub = (opt.sublabel || '').toLowerCase();
+      const kw = (opt.keywords || '').toLowerCase();
+      return l.includes(term) || sub.includes(term) || kw.includes(term);
+    });
+  }, [options, search]);
+
+  const handleSelect = (val) => {
+    onChange(val);
+    setIsOpen(false);
+    setSearch('');
+  };
+
+  const handleClear = (e) => {
+    e.stopPropagation();
+    onChange('');
+    setSearch('');
+  };
+
+  const showCustomOption = allowCustom && search.trim().length > 0 && !options.some(o => (o.label || '').toLowerCase() === search.trim().toLowerCase());
+
+  return (
+    <div className={`relative w-full ${className}`} ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between border rounded-lg px-3 py-2 text-xs text-left bg-gray-50 focus:bg-white focus:outline-none transition-all cursor-pointer ${
+          isOpen ? 'border-yellow-500 ring-2 ring-yellow-400/20 bg-white' : 'border-gray-300 hover:border-gray-400'
+        } ${buttonClassName}`}
+      >
+        <div className="flex items-center gap-2 overflow-hidden flex-1 mr-1">
+          {IconComponent && <IconComponent size={13} className="text-gray-400 shrink-0" />}
+          {selectedOption ? (
+            <div className="flex items-center gap-1.5 truncate">
+              {selectedOption.badge && (
+                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 border ${selectedOption.badgeClass || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                  {selectedOption.badge}
+                </span>
+              )}
+              <span className="font-bold text-gray-900 truncate">{selectedOption.label}</span>
+              {selectedOption.sublabel && (
+                <span className="text-gray-400 text-[11px] truncate hidden sm:inline">({selectedOption.sublabel})</span>
+              )}
+            </div>
+          ) : value && allowCustom ? (
+            <span className="font-bold text-gray-900 truncate">{value}</span>
+          ) : (
+            <span className="text-gray-400 font-normal truncate">{placeholder}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0 text-gray-400">
+          {(selectedOption || (value && allowCustom)) && !required && (
+            <span
+              onClick={handleClear}
+              className="p-0.5 hover:text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
+              title="Limpar seleção"
+            >
+              <X size={12} />
+            </span>
+          )}
+          <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180 text-yellow-600' : ''}`} />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-[70] left-0 right-0 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 animate-in fade-in-0 zoom-in-95">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+            <input
+              type="text"
+              autoFocus
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-medium placeholder-gray-400"
+            />
+          </div>
+
+          <div className="overflow-y-auto max-h-48 divide-y divide-gray-50 scrollbar-thin">
+            {showCustomOption && (
+              <button
+                type="button"
+                onClick={() => handleSelect(search.trim())}
+                className="w-full text-left p-2 rounded-lg text-xs font-semibold bg-yellow-50/70 hover:bg-yellow-100 text-yellow-900 flex items-center justify-between cursor-pointer mb-1 border border-yellow-200"
+              >
+                <span>Usar "<strong>{search.trim()}</strong>"</span>
+                <span className="text-[10px] bg-yellow-200 px-1.5 py-0.5 rounded font-bold">Novo</span>
+              </button>
+            )}
+
+            {filteredOptions.length === 0 && !showCustomOption ? (
+              <div className="p-3 text-center text-xs text-gray-400">
+                Nenhum resultado encontrado.
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = String(opt.value) === String(value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => handleSelect(opt.value)}
+                    className={`w-full text-left p-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? 'bg-yellow-100/80 text-gray-950 font-bold border border-yellow-200'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      {opt.badge && (
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 border ${opt.badgeClass || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                          {opt.badge}
+                        </span>
+                      )}
+                      <div className="flex flex-col truncate">
+                        <span className="truncate">{opt.label}</span>
+                        {opt.sublabel && (
+                          <span className="text-[10px] text-gray-400 font-normal truncate">{opt.sublabel}</span>
+                        )}
+                      </div>
+                    </div>
+                    {isSelected && <Check size={14} className="text-yellow-700 shrink-0 font-bold" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function FreelancerManager({
   freelancers = [],
@@ -171,6 +342,63 @@ export default function FreelancerManager({
     return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   };
 
+  // Opções estruturadas para os SearchableSelects (Autocomplete / Digitação)
+  const clientOptions = useMemo(() => {
+    return [...clients]
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }))
+      .map(c => ({
+        value: c.id,
+        label: c.name,
+        sublabel: c.cnpj ? formatCpfCnpj(c.cnpj) : '',
+        keywords: `${c.cnpj || ''} ${c.email || ''}`
+      }));
+  }, [clients]);
+
+  const freelancerOptions = useMemo(() => {
+    return [...freelancers]
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }))
+      .map(f => ({
+        value: f.id,
+        label: f.name,
+        sublabel: `${f.specialty || 'Prestador'} • ${formatCurrency(f.hourlyRate)}/h`,
+        keywords: `${f.specialty || ''} ${f.username || ''} ${f.pixKey || ''}`
+      }));
+  }, [freelancers]);
+
+  const categoryOptions = useMemo(() => {
+    return CATEGORIES.map(cat => ({
+      value: cat,
+      label: cat,
+      badge: cat,
+      badgeClass: CATEGORY_COLORS[cat]
+    }));
+  }, []);
+
+  const statusOptions = useMemo(() => [
+    { value: 'pending', label: 'Pendente', badge: 'Pendente', badgeClass: 'bg-gray-100 text-gray-700 border-gray-200' },
+    { value: 'in_progress', label: 'Em Andamento', badge: 'Em Andamento', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { value: 'delivered', label: 'Entregue', badge: 'Entregue', badgeClass: 'bg-purple-50 text-purple-700 border-purple-200' },
+    { value: 'paid', label: 'Pago', badge: 'Pago', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+  ], []);
+
+  const filterStatusOptions = useMemo(() => [
+    { value: 'all', label: 'Todos os Status' },
+    { value: 'pending', label: 'Pendentes', badge: 'Pendente', badgeClass: 'bg-gray-100 text-gray-700 border-gray-200' },
+    { value: 'in_progress', label: 'Em Andamento', badge: 'Em Andamento', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { value: 'delivered', label: 'Entregues', badge: 'Entregue', badgeClass: 'bg-purple-50 text-purple-700 border-purple-200' },
+    { value: 'paid', label: 'Pagas', badge: 'Pago', badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+  ], []);
+
+  const filterFreelancerOptions = useMemo(() => [
+    { value: 'all', label: 'Todos os Prestadores' },
+    ...freelancerOptions
+  ], [freelancerOptions]);
+
+  const filterClientOptions = useMemo(() => [
+    { value: 'all', label: 'Todos os Clientes' },
+    ...clientOptions
+  ], [clientOptions]);
+
   // Filtragem de tarefas
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -276,6 +504,14 @@ export default function FreelancerManager({
       alert('Informe o nome da demanda.');
       return;
     }
+    if (!taskForm.clientId) {
+      alert('Selecione o cliente associado à demanda.');
+      return;
+    }
+    if (!taskForm.freelancerId) {
+      alert('Selecione o prestador/freelancer para executar a demanda.');
+      return;
+    }
 
     const payload = {
       ...taskForm,
@@ -316,7 +552,7 @@ export default function FreelancerManager({
       hourlyRate: freela.hourlyRate ? String(freela.hourlyRate) : '0',
       specialty: freela.specialty || '',
       pixKey: freela.pixKey || '',
-      phone: freela.phone || '',
+      phone: formatPhone(freela.phone || ''),
       allowedTabs: freela.allowedTabs || ['freelancer-tasks'],
       isActive: freela.isActive !== undefined ? freela.isActive : true
     });
@@ -332,6 +568,7 @@ export default function FreelancerManager({
 
     const payload = {
       ...freelancerForm,
+      phone: formatPhone(freelancerForm.phone || ''),
       hourlyRate: parseFloat(String(freelancerForm.hourlyRate).replace(',', '.')) || 0
     };
 
@@ -552,41 +789,43 @@ export default function FreelancerManager({
               </div>
 
               {/* Status Filter */}
-              <select
-                value={taskStatusFilter}
-                onChange={(e) => setTaskStatusFilter(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
-              >
-                <option value="all">Todos os Status</option>
-                <option value="pending">Pendentes</option>
-                <option value="in_progress">Em Andamento</option>
-                <option value="delivered">Entregues</option>
-                <option value="paid">Pagas</option>
-              </select>
+              <div className="w-36">
+                <SearchableSelect
+                  value={taskStatusFilter}
+                  onChange={setTaskStatusFilter}
+                  options={filterStatusOptions}
+                  placeholder="Status"
+                  searchPlaceholder="Filtrar status..."
+                  icon={Filter}
+                  buttonClassName="py-1.5 bg-white border-gray-200"
+                />
+              </div>
 
               {/* Freelancer Filter */}
-              <select
-                value={taskFreelancerFilter}
-                onChange={(e) => setTaskFreelancerFilter(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
-              >
-                <option value="all">Todos os Prestadores</option>
-                {freelancers.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
+              <div className="w-48">
+                <SearchableSelect
+                  value={taskFreelancerFilter}
+                  onChange={setTaskFreelancerFilter}
+                  options={filterFreelancerOptions}
+                  placeholder="Prestador"
+                  searchPlaceholder="Filtrar prestador..."
+                  icon={Users}
+                  buttonClassName="py-1.5 bg-white border-gray-200"
+                />
+              </div>
 
               {/* Client Filter */}
-              <select
-                value={taskClientFilter}
-                onChange={(e) => setTaskClientFilter(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer"
-              >
-                <option value="all">Todos os Clientes</option>
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <div className="w-48">
+                <SearchableSelect
+                  value={taskClientFilter}
+                  onChange={setTaskClientFilter}
+                  options={filterClientOptions}
+                  placeholder="Cliente"
+                  searchPlaceholder="Filtrar cliente..."
+                  icon={Building}
+                  buttonClassName="py-1.5 bg-white border-gray-200"
+                />
+              </div>
             </div>
 
             <button
@@ -819,6 +1058,14 @@ export default function FreelancerManager({
                             <span className="font-semibold text-gray-700 truncate max-w-[140px]">{freela.pixKey}</span>
                           </div>
                         )}
+                        {freela.phone && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500 flex items-center gap-1">
+                              <Phone size={12} /> WhatsApp:
+                            </span>
+                            <span className="font-semibold text-gray-700">{formatPhone(freela.phone)}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Stats summary */}
@@ -886,16 +1133,17 @@ export default function FreelancerManager({
                 ))}
               </select>
 
-              <select
-                value={payrollFreelancerId}
-                onChange={(e) => setPayrollFreelancerId(e.target.value)}
-                className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-800 focus:outline-none focus:border-yellow-500 cursor-pointer"
-              >
-                <option value="all">Todos os Prestadores</option>
-                {freelancers.map(f => (
-                  <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.hourlyRate)}/h)</option>
-                ))}
-              </select>
+              <div className="w-56">
+                <SearchableSelect
+                  value={payrollFreelancerId}
+                  onChange={setPayrollFreelancerId}
+                  options={filterFreelancerOptions}
+                  placeholder="Prestador"
+                  searchPlaceholder="Filtrar prestador..."
+                  icon={Users}
+                  buttonClassName="py-1.5 bg-white border-gray-200"
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1116,48 +1364,56 @@ export default function FreelancerManager({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Cliente Associado (Base MHB):</label>
-                  <select
-                    required
+                  <label className="block font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>Cliente Associado (Base MHB):</span>
+                    {taskForm.clientId && (
+                      <span className="text-[10px] text-gray-400 font-normal">Selecionado</span>
+                    )}
+                  </label>
+                  <SearchableSelect
                     value={taskForm.clientId}
-                    onChange={(e) => setTaskForm({ ...taskForm, clientId: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-semibold"
-                  >
-                    <option value="">Selecione o cliente...</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setTaskForm({ ...taskForm, clientId: val })}
+                    options={clientOptions}
+                    placeholder="Pesquisar ou selecionar cliente..."
+                    searchPlaceholder="Digite o nome ou CNPJ do cliente..."
+                    icon={Building}
+                    required={true}
+                  />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Prestador / Freelancer:</label>
-                  <select
-                    required
+                  <label className="block font-bold text-gray-700 mb-1 flex items-center justify-between">
+                    <span>Prestador / Freelancer:</span>
+                    {taskForm.freelancerId && (
+                      <span className="text-[10px] text-yellow-700 font-bold">
+                        {formatCurrency(getFreelancer(taskForm.freelancerId)?.hourlyRate)}/h
+                      </span>
+                    )}
+                  </label>
+                  <SearchableSelect
                     value={taskForm.freelancerId}
-                    onChange={(e) => setTaskForm({ ...taskForm, freelancerId: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-semibold"
-                  >
-                    <option value="">Selecione o prestador...</option>
-                    {freelancers.map(f => (
-                      <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.hourlyRate)}/h)</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setTaskForm({ ...taskForm, freelancerId: val })}
+                    options={freelancerOptions}
+                    placeholder="Pesquisar ou selecionar prestador..."
+                    searchPlaceholder="Digite o nome ou especialidade..."
+                    icon={Users}
+                    required={true}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Categoria:</label>
-                  <select
+                  <SearchableSelect
                     value={taskForm.category}
-                    onChange={(e) => setTaskForm({ ...taskForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
-                  >
-                    {CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setTaskForm({ ...taskForm, category: val })}
+                    options={categoryOptions}
+                    placeholder="Selecione a categoria..."
+                    searchPlaceholder="Digite para filtrar ou criar..."
+                    allowCustom={true}
+                    icon={Tag}
+                  />
                 </div>
 
                 <div>
@@ -1207,16 +1463,14 @@ export default function FreelancerManager({
 
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Status:</label>
-                  <select
+                  <SearchableSelect
                     value={taskForm.status}
-                    onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900 font-bold"
-                  >
-                    <option value="pending">Pendente</option>
-                    <option value="in_progress">Em Andamento</option>
-                    <option value="delivered">Entregue</option>
-                    <option value="paid">Pago</option>
-                  </select>
+                    onChange={(val) => setTaskForm({ ...taskForm, status: val })}
+                    options={statusOptions}
+                    placeholder="Selecione o status..."
+                    searchPlaceholder="Filtrar status..."
+                    icon={Clock}
+                  />
                 </div>
               </div>
 
@@ -1372,7 +1626,7 @@ export default function FreelancerManager({
                     type="text"
                     placeholder="(11) 99999-9999"
                     value={freelancerForm.phone}
-                    onChange={(e) => setFreelancerForm({ ...freelancerForm, phone: e.target.value })}
+                    onChange={(e) => setFreelancerForm({ ...freelancerForm, phone: formatPhone(e.target.value) })}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:bg-white text-gray-900"
                   />
                 </div>

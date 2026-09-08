@@ -27,6 +27,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
   const [fixedFee, setFixedFee] = useState('1400');
   const [hoursIncluded, setHoursIncluded] = useState('7');
   const [hourlyRate, setHourlyRate] = useState(() => localStorage.getItem('raffa_default_hourly_rate') || '200');
+  const [retainIss, setRetainIss] = useState(false);
 
   const dialogRef = useRef(null);
 
@@ -81,6 +82,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
     setPhone('');
     setAddress('');
     setIsActive(true);
+    setRetainIss(false);
     setContractType('fixed');
     setFixedFee('1000');
     setHourlyRate(globalRate);
@@ -97,6 +99,9 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
     setPhone(formatPhone(client.phone || ''));
     setAddress(client.address || '');
     setIsActive(client.isActive !== false);
+    const clientNameLower = (client.name || '').toLowerCase();
+    const isPedroRafael = clientNameLower.includes('pedro') && (clientNameLower.includes('rafael') || clientNameLower.includes('&'));
+    setRetainIss(client.retainIss !== undefined ? Boolean(client.retainIss) : isPedroRafael);
     setContractType(client.contractType);
     setFixedFee(client.fixedFee.toString());
     setHourlyRate(client.hourlyRate.toString());
@@ -263,7 +268,8 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
       fixedFee: contractType === 'hourly' ? 0 : (parseFloat(fixedFee) || 0),
       hoursIncluded: contractType === 'hourly' ? 0 : (parseFloat(hoursIncluded) || 0),
       hourlyRate: parseFloat(hourlyRate) || 0,
-      isActive: isActive
+      isActive: isActive,
+      retainIss: retainIss
     };
 
     if (editingClient) {
@@ -858,6 +864,35 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
             <label htmlFor="client-is-active" className="text-xs font-semibold text-gray-700 cursor-pointer">
               Cliente Ativo (com contrato ou demandas correntes)
             </label>
+          </div>
+
+          <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5 cursor-pointer">
+                <span>Retenção de ISS (Emissão NFS-e no Asaas)</span>
+              </label>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${retainIss ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-gray-100 text-gray-700'}`}>
+                {retainIss ? 'Tomador retém o ISS' : 'ISS por conta do prestador'}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <input 
+                id="client-retain-iss"
+                type="checkbox"
+                checked={retainIss}
+                onChange={(e) => setRetainIss(e.target.checked)}
+                className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
+              />
+              <label htmlFor="client-retain-iss" className="text-xs text-gray-700 cursor-pointer">
+                Este cliente retém o ISS na fonte (Tomador do ISS, como o <strong>Colégio Pedro e Rafael</strong>).
+              </label>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              {retainIss 
+                ? 'ℹ️ Ao gerar faturas para este cliente no Asaas, a NFS-e será programada com retenção de ISS pelo tomador.' 
+                : 'ℹ️ Padrão: O imposto ISS é recolhido pelo prestador (sem retenção de ISS pelo cliente).'}
+            </p>
           </div>
 
           <div className="flex flex-col gap-1">

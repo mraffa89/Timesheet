@@ -543,23 +543,66 @@ export async function createAsaasBilling(params = {}) {
     let invoiceStatus = '';
     let invoiceMessage = '';
 
+    // Determina regra de ISS:
+    // Padrão: retainIss = false (ISS por conta do prestador)
+    // Exceção: Colégio Pedro e Rafael (ou retainIss explícito no cliente) -> retainIss = true (tomador do ISS)
+    const rawClientName = (params.client?.name || params.clientName || '').toLowerCase();
+    const isPedroRafael = rawClientName.includes('pedro') && (rawClientName.includes('rafael') || rawClientName.includes('&'));
+    const isTomadorIss = params.client?.retainIss !== undefined ? Boolean(params.client.retainIss) : isPedroRafael;
+
     const autoNfeEnabled = localStorage.getItem('raffa_asaas_auto_nfe') !== 'false';
     if (autoNfeEnabled) {
       try {
         const invoiceDescription = `PRESTAÇÃO DE SERVIÇOS DE MARKETING - JOBS AVULSOS - ${monthYearFormatted}`;
         
+        // Tenta buscar o serviço municipal padrão da conta no Asaas caso não esteja em cache local
+        let municipalServiceId = localStorage.getItem('raffa_asaas_municipal_service_id') || null;
+        let municipalServiceName = localStorage.getItem('raffa_asaas_municipal_service_name') || null;
+
+        if (!municipalServiceId) {
+          try {
+            const srvRes = await fetch(`${baseUrl}/fiscalInfo/services?limit=1`, {
+              method: 'GET',
+              headers: { 'access_token': token }
+            });
+            if (srvRes.ok) {
+              const srvData = await srvRes.json();
+              if (srvData?.data && srvData.data.length > 0) {
+                municipalServiceId = srvData.data[0].id;
+                municipalServiceName = srvData.data[0].description;
+              }
+            }
+          } catch (e) {
+            console.warn("Aviso ao buscar serviço municipal no Asaas:", e);
+          }
+        }
+
+        const invoicePayload = {
+          payment: paymentData.id,
+          serviceDescription: invoiceDescription,
+          observations: `Serviços de marketing prestados em ${monthYearFormatted}. Cobrança Asaas: ${paymentData.id}`,
+          value: Number(amount.toFixed(2)),
+          deductions: 0,
+          effectiveDate: dueDate, // vinculado à cobrança e agendado para emissão no pagamento
+          taxes: {
+            retainIss: isTomadorIss
+          }
+        };
+
+        if (municipalServiceId) {
+          invoicePayload.municipalServiceId = municipalServiceId;
+        }
+        if (municipalServiceName) {
+          invoicePayload.municipalServiceName = municipalServiceName;
+        }
+
         const invoiceResponse = await fetch(`${baseUrl}/invoices`, {
           method: 'POST',
           headers: {
             'access_token': token,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            payment: paymentData.id,
-            serviceDescription: invoiceDescription,
-            value: Number(amount.toFixed(2)),
-            deductions: 0
-          })
+          body: JSON.stringify(invoicePayload)
         });
 
         if (invoiceResponse.ok) {
@@ -567,7 +610,7 @@ export async function createAsaasBilling(params = {}) {
           invoiceScheduled = true;
           invoiceId = invoiceData.id;
           invoiceStatus = invoiceData.status || 'SCHEDULED';
-          invoiceMessage = 'NFS-e agendada com sucesso (será emitida automaticamente assim que o cliente pagar a fatura).';
+          invoiceMessage = `NFS-e agendada com sucesso (será emitida automaticamente assim que o cliente realizar o pagamento). ISS: ${isTomadorIss ? 'Retido pelo tomador (Colégio Pedro e Rafael)' : 'Por conta do prestador'}.`;
         } else {
           try {
             const errData = await invoiceResponse.json();
@@ -595,6 +638,7 @@ export async function createAsaasBilling(params = {}) {
       invoiceId,
       invoiceStatus,
       invoiceMessage,
+      retainIss: isTomadorIss,
       simulated: false
     };
 
