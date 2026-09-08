@@ -11,8 +11,8 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
   // Supabase connection state and modal
   const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(() => getSupabaseCredentials().isConfigured);
   const [showDbConfigModal, setShowDbConfigModal] = useState(false);
-  const [dbUrlInput, setDbUrlInput] = useState(() => localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '');
-  const [dbKeyInput, setDbKeyInput] = useState(() => localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+  const [dbUrlInput, setDbUrlInput] = useState(() => getSupabaseCredentials().url || '');
+  const [dbKeyInput, setDbKeyInput] = useState(() => getSupabaseCredentials().key || '');
 
   const handleSaveQuickDb = (e) => {
     e.preventDefault();

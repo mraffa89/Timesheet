@@ -40,6 +40,8 @@ import { defaultClients, defaultEntries } from './data/seedData';
 
 // Supabase Connection Import
 import { 
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY,
   checkSupabaseConfigured,
   isSupabaseConfigured,
   getClientsDb,
@@ -131,8 +133,8 @@ function App() {
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(() => localStorage.getItem('raffa_default_hourly_rate') || '200');
   
   // Supabase Connection Settings
-  const [supabaseUrl, setSupabaseUrl] = useState(() => localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+  const [supabaseUrl, setSupabaseUrl] = useState(() => localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL || '');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY || '');
   const [supabaseTestStatus, setSupabaseTestStatus] = useState(null);
 
   // SMTP Email Server Settings

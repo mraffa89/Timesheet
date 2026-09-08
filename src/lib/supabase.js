@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
+export const DEFAULT_SUPABASE_URL = 'https://lvxluxcinohxnzddzhhh.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx2eGx1eGNpbm9oeG56ZGR6aGhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NjYyMzIsImV4cCI6MjA5MTE0MjIzMn0.RnVdwMEaOmpZcPSGUqZCOC9yTt1QyKAq70QkIeUYaVQ';
+
 export function getSupabaseCredentials() {
-  const url = (localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '').trim();
-  const key = (localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  const url = (localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL || '').trim();
+  const key = (localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY || '').trim();
   return { url, key, isConfigured: !!(url && key) };
 }
 
