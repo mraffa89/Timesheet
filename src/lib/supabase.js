@@ -210,3 +210,171 @@ function mapClientFromDb(dbClient) {
     isActive: dbClient.is_active !== undefined ? dbClient.is_active : true
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Freelancers / Prestadores de Serviço
+// ═══════════════════════════════════════════════════════════════
+
+export async function getFreelancersDb() {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const { data, error } = await db
+    .from('freelancers')
+    .select('*')
+    .order('name');
+  if (error) throw error;
+  return data.map(mapFreelancerFromDb);
+}
+
+export async function addFreelancerDb(freelancer) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const dbFreelancer = mapFreelancerToDb(freelancer);
+  const { data, error } = await db
+    .from('freelancers')
+    .insert([dbFreelancer])
+    .select();
+  if (error) throw error;
+  return mapFreelancerFromDb(data[0]);
+}
+
+export async function updateFreelancerDb(id, freelancer) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const dbFreelancer = mapFreelancerToDb(freelancer);
+  const { data, error } = await db
+    .from('freelancers')
+    .update(dbFreelancer)
+    .eq('id', id)
+    .select();
+  if (error) throw error;
+  return mapFreelancerFromDb(data[0]);
+}
+
+export async function deleteFreelancerDb(id) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const { error } = await db
+    .from('freelancers')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+function mapFreelancerToDb(freelancer) {
+  return {
+    name: freelancer.name,
+    username: (freelancer.username || freelancer.email || '').trim().toLowerCase(),
+    password: freelancer.password || '',
+    hourly_rate: freelancer.hourlyRate !== undefined ? parseFloat(freelancer.hourlyRate) : 0,
+    specialty: freelancer.specialty || '',
+    pix_key: freelancer.pixKey || '',
+    phone: freelancer.phone || '',
+    allowed_tabs: freelancer.allowedTabs || ['freelancer-tasks'],
+    is_active: freelancer.isActive !== undefined ? freelancer.isActive : true
+  };
+}
+
+function mapFreelancerFromDb(db) {
+  return {
+    id: db.id,
+    name: db.name,
+    username: db.username || '',
+    email: db.username || '',
+    password: db.password || '',
+    hourlyRate: parseFloat(db.hourly_rate !== undefined ? db.hourly_rate : 0),
+    specialty: db.specialty || '',
+    pixKey: db.pix_key || '',
+    phone: db.phone || '',
+    allowedTabs: db.allowed_tabs || ['freelancer-tasks'],
+    isActive: db.is_active !== undefined ? db.is_active : true,
+    createdAt: db.created_at
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Demandas / Tarefas de Freelancers
+// ═══════════════════════════════════════════════════════════════
+
+export async function getFreelancerTasksDb() {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const { data, error } = await db
+    .from('freelancer_tasks')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map(mapFreelancerTaskFromDb);
+}
+
+export async function addFreelancerTaskDb(task) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const dbTask = mapFreelancerTaskToDb(task);
+  const { data, error } = await db
+    .from('freelancer_tasks')
+    .insert([dbTask])
+    .select();
+  if (error) throw error;
+  return mapFreelancerTaskFromDb(data[0]);
+}
+
+export async function updateFreelancerTaskDb(id, task) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const dbTask = mapFreelancerTaskToDb(task);
+  const { data, error } = await db
+    .from('freelancer_tasks')
+    .update(dbTask)
+    .eq('id', id)
+    .select();
+  if (error) throw error;
+  return mapFreelancerTaskFromDb(data[0]);
+}
+
+export async function deleteFreelancerTaskDb(id) {
+  const db = getSupabaseInstance();
+  if (!db) return null;
+  const { error } = await db
+    .from('freelancer_tasks')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+function mapFreelancerTaskToDb(task) {
+  return {
+    title: task.title,
+    freelancer_id: task.freelancerId || null,
+    client_id: task.clientId || null,
+    category: task.category || 'Digital',
+    request_date: task.requestDate || null,
+    expected_due_date: task.expectedDueDate || null,
+    actual_delivery_date: task.actualDeliveryDate || null,
+    hours: task.hours !== undefined ? parseFloat(task.hours) : 0,
+    briefing_url: task.briefingUrl || null,
+    notes: task.notes || null,
+    status: task.status || 'pending'
+  };
+}
+
+function mapFreelancerTaskFromDb(db) {
+  return {
+    id: db.id,
+    title: db.title,
+    freelancerId: db.freelancer_id,
+    clientId: db.client_id,
+    category: db.category || 'Digital',
+    requestDate: db.request_date || '',
+    expectedDueDate: db.expected_due_date || '',
+    actualDeliveryDate: db.actual_delivery_date || '',
+    hours: parseFloat(db.hours !== undefined ? db.hours : 0),
+    briefingUrl: db.briefing_url || '',
+    notes: db.notes || '',
+    status: db.status || 'pending',
+    createdAt: db.created_at
+  };
+}
+

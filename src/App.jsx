@@ -18,7 +18,8 @@ import {
   CheckCircle2,
   DollarSign,
   LogOut,
-  Key
+  Key,
+  Briefcase
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ClientManager from './components/ClientManager';
@@ -27,6 +28,8 @@ import InvoiceView from './components/InvoiceView';
 import ImportModal from './components/ImportModal';
 import ConfirmModal from './components/ConfirmModal';
 import LoginScreen from './components/LoginScreen';
+import FreelancerManager from './components/FreelancerManager';
+import FreelancerPortal from './components/FreelancerPortal';
 
 import { defaultClients, defaultEntries } from './data/seedData';
 
@@ -44,7 +47,15 @@ import {
   deleteEntryDb,
   clearAllEntriesDb,
   addEntriesBulkDb,
-  getSupabaseInstance
+  getSupabaseInstance,
+  getFreelancersDb,
+  addFreelancerDb,
+  updateFreelancerDb,
+  deleteFreelancerDb,
+  getFreelancerTasksDb,
+  addFreelancerTaskDb,
+  updateFreelancerTaskDb,
+  deleteFreelancerTaskDb
 } from './lib/supabase';
 import { testAsaasConnection } from './utils/asaasIntegration';
 
@@ -101,6 +112,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [clients, setClients] = useState([]);
   const [entries, setEntries] = useState([]);
+  const [freelancers, setFreelancers] = useState([]);
+  const [freelancerTasks, setFreelancerTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(false);
   const [asaasToken, setAsaasToken] = useState(localStorage.getItem('raffa_asaas_token') || '');
@@ -168,9 +181,23 @@ function App() {
         try {
           const dbClients = await getClientsDb();
           const dbEntries = await getEntriesDb();
+          let dbFreelancers = [];
+          let dbTasks = [];
+          try {
+            dbFreelancers = await getFreelancersDb();
+            dbTasks = await getFreelancerTasksDb();
+          } catch (eFreela) {
+            console.warn("Tabelas de freelancers ainda não migradas no Supabase, usando LocalStorage:", eFreela);
+            const localFreelas = localStorage.getItem('raffa_freelancers_v1');
+            const localTasks = localStorage.getItem('raffa_freelancer_tasks_v1');
+            dbFreelancers = localFreelas ? JSON.parse(localFreelas) : [];
+            dbTasks = localTasks ? JSON.parse(localTasks) : [];
+          }
 
           setClients(dbClients || []);
           setEntries(dbEntries || []);
+          setFreelancers(dbFreelancers || []);
+          setFreelancerTasks(dbTasks || []);
           setIsOnline(true);
         } catch (err) {
           console.error("Supabase load error, falling back to LocalStorage:", err);
@@ -195,18 +222,27 @@ function App() {
     localStorage.setItem('raffa_billing_entries_v4', JSON.stringify(newEntries));
   };
 
+  const saveFreelancers = (newFreelas) => {
+    setFreelancers(newFreelas);
+    localStorage.setItem('raffa_freelancers_v1', JSON.stringify(newFreelas));
+  };
+
+  const saveFreelancerTasks = (newTasks) => {
+    setFreelancerTasks(newTasks);
+    localStorage.setItem('raffa_freelancer_tasks_v1', JSON.stringify(newTasks));
+  };
+
   const loadLocalStorageFallback = () => {
     setIsOnline(false);
     const localClients = localStorage.getItem('raffa_billing_clients_v4');
     const localEntries = localStorage.getItem('raffa_billing_entries_v4');
+    const localFreelas = localStorage.getItem('raffa_freelancers_v1');
+    const localTasks = localStorage.getItem('raffa_freelancer_tasks_v1');
 
-    if (localClients) {
-      setClients(JSON.parse(localClients));
-      setEntries(localEntries ? JSON.parse(localEntries) : []);
-    } else {
-      setClients([]);
-      setEntries([]);
-    }
+    setClients(localClients ? JSON.parse(localClients) : []);
+    setEntries(localEntries ? JSON.parse(localEntries) : []);
+    setFreelancers(localFreelas ? JSON.parse(localFreelas) : []);
+    setFreelancerTasks(localTasks ? JSON.parse(localTasks) : []);
   };
 
   const handleSaveCompanyInfo = (e) => {
@@ -447,13 +483,131 @@ function App() {
     alert(`Sucesso! ${importedEntries.length} demandas foram consolidadas e importadas com sucesso.`);
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // Handlers de Freelancers / Prestadores de Serviço
+  // ═══════════════════════════════════════════════════════════════
+
+  const handleAddFreelancer = async (freelaData) => {
+    if (isOnline) {
+      try {
+        const saved = await addFreelancerDb(freelaData);
+        if (saved) {
+          saveFreelancers([...freelancers, saved]);
+        } else {
+          const newFreela = { ...freelaData, id: `freela-${Date.now()}` };
+          saveFreelancers([...freelancers, newFreela]);
+        }
+      } catch (err) {
+        console.warn("Erro ao salvar prestador no Supabase, salvando localmente:", err);
+        const newFreela = { ...freelaData, id: `freela-${Date.now()}` };
+        saveFreelancers([...freelancers, newFreela]);
+      }
+    } else {
+      const newFreela = { ...freelaData, id: `freela-${Date.now()}` };
+      saveFreelancers([...freelancers, newFreela]);
+    }
+  };
+
+  const handleUpdateFreelancer = async (updatedFreela) => {
+    if (isOnline) {
+      try {
+        const { id, createdAt, ...rest } = updatedFreela;
+        const saved = await updateFreelancerDb(id, rest);
+        if (saved) {
+          saveFreelancers(freelancers.map(f => f.id === id ? saved : f));
+        } else {
+          saveFreelancers(freelancers.map(f => f.id === updatedFreela.id ? updatedFreela : f));
+        }
+      } catch (err) {
+        console.warn("Erro ao atualizar prestador no Supabase, salvando localmente:", err);
+        saveFreelancers(freelancers.map(f => f.id === updatedFreela.id ? updatedFreela : f));
+      }
+    } else {
+      saveFreelancers(freelancers.map(f => f.id === updatedFreela.id ? updatedFreela : f));
+    }
+  };
+
+  const handleDeleteFreelancer = async (freelaId) => {
+    if (isOnline) {
+      try {
+        await deleteFreelancerDb(freelaId);
+        saveFreelancers(freelancers.filter(f => f.id !== freelaId));
+      } catch (err) {
+        console.warn("Erro ao excluir prestador no Supabase, excluindo localmente:", err);
+        saveFreelancers(freelancers.filter(f => f.id !== freelaId));
+      }
+    } else {
+      saveFreelancers(freelancers.filter(f => f.id !== freelaId));
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // Handlers de Demandas dos Freelancers
+  // ═══════════════════════════════════════════════════════════════
+
+  const handleAddFreelancerTask = async (taskData) => {
+    if (isOnline) {
+      try {
+        const saved = await addFreelancerTaskDb(taskData);
+        if (saved) {
+          saveFreelancerTasks([saved, ...freelancerTasks]);
+        } else {
+          const newTask = { ...taskData, id: `task-${Date.now()}` };
+          saveFreelancerTasks([newTask, ...freelancerTasks]);
+        }
+      } catch (err) {
+        console.warn("Erro ao salvar demanda no Supabase, salvando localmente:", err);
+        const newTask = { ...taskData, id: `task-${Date.now()}` };
+        saveFreelancerTasks([newTask, ...freelancerTasks]);
+      }
+    } else {
+      const newTask = { ...taskData, id: `task-${Date.now()}` };
+      saveFreelancerTasks([newTask, ...freelancerTasks]);
+    }
+  };
+
+  const handleUpdateFreelancerTask = async (updatedTask) => {
+    if (isOnline) {
+      try {
+        const { id, createdAt, ...rest } = updatedTask;
+        const saved = await updateFreelancerTaskDb(id, rest);
+        if (saved) {
+          saveFreelancerTasks(freelancerTasks.map(t => t.id === id ? saved : t));
+        } else {
+          saveFreelancerTasks(freelancerTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+        }
+      } catch (err) {
+        console.warn("Erro ao atualizar demanda no Supabase, salvando localmente:", err);
+        saveFreelancerTasks(freelancerTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+      }
+    } else {
+      saveFreelancerTasks(freelancerTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+    }
+  };
+
+  const handleDeleteFreelancerTask = async (taskId) => {
+    if (isOnline) {
+      try {
+        await deleteFreelancerTaskDb(taskId);
+        saveFreelancerTasks(freelancerTasks.filter(t => t.id !== taskId));
+      } catch (err) {
+        console.warn("Erro ao excluir demanda no Supabase, excluindo localmente:", err);
+        saveFreelancerTasks(freelancerTasks.filter(t => t.id !== taskId));
+      }
+    } else {
+      saveFreelancerTasks(freelancerTasks.filter(t => t.id !== taskId));
+    }
+  };
+
   // Backup handlers
   const handleExportBackup = () => {
     const backupData = {
       clients,
       entries,
+      freelancers,
+      freelancerTasks,
       companyInfo,
-      version: '1.0.3',
+      version: '1.1.0',
       exportedAt: new Date().toISOString()
     };
 
@@ -500,6 +654,12 @@ function App() {
             } else {
               saveClients(parsed.clients);
               saveEntries(parsed.entries);
+              if (parsed.freelancers) {
+                saveFreelancers(parsed.freelancers);
+              }
+              if (parsed.freelancerTasks) {
+                saveFreelancerTasks(parsed.freelancerTasks);
+              }
               if (parsed.companyInfo) {
                 setCompanyInfo(parsed.companyInfo);
                 setCompanyForm(parsed.companyInfo);
@@ -575,7 +735,27 @@ function App() {
   }
 
   if (!userSession) {
-    return <LoginScreen onLogin={(user) => setUserSession(user)} companyInfo={companyInfo} />;
+    return (
+      <LoginScreen 
+        onLogin={(user) => setUserSession(user)} 
+        companyInfo={companyInfo} 
+        freelancers={freelancers} 
+      />
+    );
+  }
+
+  // Se o usuário logado for um Freelancer, renderiza o Portal do Freelancer dedicado
+  if (userSession && userSession.role === 'Freelancer') {
+    return (
+      <FreelancerPortal 
+        userSession={userSession}
+        tasks={freelancerTasks}
+        clients={clients}
+        onUpdateTask={handleUpdateFreelancerTask}
+        onLogout={handleLogout}
+        companyInfo={companyInfo}
+      />
+    );
   }
 
   return (
@@ -655,6 +835,19 @@ function App() {
             >
               <FileText size={18} />
               <span>Relatórios / Faturas</span>
+            </button>
+          </li>
+          <li>
+            <button 
+              className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'freelancers' 
+                  ? 'bg-yellow-400 text-gray-950 shadow-sm font-bold' 
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('freelancers')}
+            >
+              <Briefcase size={18} />
+              <span>Prestadores</span>
             </button>
           </li>
           <li>
@@ -764,6 +957,21 @@ function App() {
               entries={entries}
               clients={clients}
               companyInfo={companyInfo}
+            />
+          )}
+
+          {activeTab === 'freelancers' && (
+            <FreelancerManager
+              freelancers={freelancers}
+              tasks={freelancerTasks}
+              clients={clients}
+              companyInfo={companyInfo}
+              onAddFreelancer={handleAddFreelancer}
+              onUpdateFreelancer={handleUpdateFreelancer}
+              onDeleteFreelancer={handleDeleteFreelancer}
+              onAddTask={handleAddFreelancerTask}
+              onUpdateTask={handleUpdateFreelancerTask}
+              onDeleteTask={handleDeleteFreelancerTask}
             />
           )}
 

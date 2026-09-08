@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key } from 'lucide-react';
 
-export default function LoginScreen({ onLogin, companyInfo }) {
+export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -13,13 +13,12 @@ export default function LoginScreen({ onLogin, companyInfo }) {
     setIsLoading(true);
 
     try {
-      // Check stored custom master credentials or defaults
+      const inputEmail = email.trim().toLowerCase();
+
+      // 1. Checa credenciais do Administrador mestre
       const savedUser = localStorage.getItem('raffa_auth_email') || 'contato@matheusraffa.com.br';
       const savedPass = localStorage.getItem('raffa_auth_pass') || 'admin123';
 
-      const inputEmail = email.trim().toLowerCase();
-
-      // Flexible login match: matches saved credentials or default master
       if (
         (inputEmail === savedUser.toLowerCase() || inputEmail === 'admin' || inputEmail === 'matheus') &&
         (password === savedPass || password === 'admin123' || password === '123456')
@@ -28,13 +27,53 @@ export default function LoginScreen({ onLogin, companyInfo }) {
           email: inputEmail.includes('@') ? inputEmail : `${inputEmail}@matheusraffa.com.br`,
           name: companyInfo?.brandName || 'Matheus Raffa',
           role: 'Administrador',
+          allowedTabs: ['dashboard', 'clients', 'timesheet', 'reports', 'freelancers', 'settings'],
           loggedAt: new Date().toISOString()
         };
         localStorage.setItem('raffa_session_user', JSON.stringify(userSession));
         onLogin(userSession);
-      } else {
-        setErrorMessage('E-mail ou senha incorretos. Tente novamente.');
+        return;
       }
+
+      // 2. Checa se é um Freelancer / Prestador de Serviço cadastrado
+      let allFreelas = Array.isArray(freelancers) ? [...freelancers] : [];
+      if (allFreelas.length === 0) {
+        try {
+          const localFreelas = JSON.parse(localStorage.getItem('raffa_freelancers_v1') || '[]');
+          if (Array.isArray(localFreelas)) allFreelas = localFreelas;
+        } catch (e) {}
+      }
+
+      const matchedFreelancer = allFreelas.find(f => 
+        f.isActive !== false &&
+        (
+          (f.username && f.username.toLowerCase() === inputEmail) || 
+          (f.email && f.email.toLowerCase() === inputEmail) ||
+          (f.name && f.name.toLowerCase() === inputEmail)
+        ) &&
+        String(f.password) === String(password)
+      );
+
+      if (matchedFreelancer) {
+        const userSession = {
+          id: matchedFreelancer.id,
+          email: matchedFreelancer.username || matchedFreelancer.email || matchedFreelancer.name,
+          name: matchedFreelancer.name,
+          role: 'Freelancer',
+          freelancerId: matchedFreelancer.id,
+          hourlyRate: matchedFreelancer.hourlyRate || 0,
+          specialty: matchedFreelancer.specialty || '',
+          allowedTabs: matchedFreelancer.allowedTabs && matchedFreelancer.allowedTabs.length > 0 
+            ? matchedFreelancer.allowedTabs 
+            : ['freelancer-tasks'],
+          loggedAt: new Date().toISOString()
+        };
+        localStorage.setItem('raffa_session_user', JSON.stringify(userSession));
+        onLogin(userSession);
+        return;
+      }
+
+      setErrorMessage('E-mail/usuário ou senha incorretos. Verifique suas credenciais.');
     } catch (err) {
       setErrorMessage('Erro ao realizar login: ' + err.message);
     } finally {
