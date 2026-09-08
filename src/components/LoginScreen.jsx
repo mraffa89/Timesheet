@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key, RefreshCw } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, Key, RefreshCw, Server, X, CheckCircle2 } from 'lucide-react';
 import { authenticateFreelancerDb, getSupabaseCredentials } from '../lib/supabase';
 
 export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) {
@@ -8,7 +8,25 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const { isConfigured: isSupabaseConfigured } = getSupabaseCredentials();
+  // Supabase connection state and modal
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(() => getSupabaseCredentials().isConfigured);
+  const [showDbConfigModal, setShowDbConfigModal] = useState(false);
+  const [dbUrlInput, setDbUrlInput] = useState(() => localStorage.getItem('raffa_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '');
+  const [dbKeyInput, setDbKeyInput] = useState(() => localStorage.getItem('raffa_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+
+  const handleSaveQuickDb = (e) => {
+    e.preventDefault();
+    if (!dbUrlInput.trim() || !dbKeyInput.trim()) {
+      alert('Preencha a URL e a Chave Anônima (Anon Key) do Supabase.');
+      return;
+    }
+    localStorage.setItem('raffa_supabase_url', dbUrlInput.trim());
+    localStorage.setItem('raffa_supabase_anon_key', dbKeyInput.trim());
+    setIsSupabaseConfigured(true);
+    setShowDbConfigModal(false);
+    setErrorMessage('');
+    alert('✓ Credenciais do Supabase configuradas com sucesso neste navegador! Agora você pode realizar o login.');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -162,8 +180,18 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
           
           {errorMessage && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-xl text-xs font-semibold text-center animate-in fade-in-0">
-              {errorMessage}
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-xs font-semibold text-center animate-in fade-in-0 flex flex-col items-center gap-2">
+              <span>{errorMessage}</span>
+              {!isSupabaseConfigured && (
+                <button
+                  type="button"
+                  onClick={() => setShowDbConfigModal(true)}
+                  className="mt-1 px-3.5 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Server size={13} />
+                  <span>Configurar Supabase Agora</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -225,19 +253,97 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
             Conexão Protegida
           </span>
           {isSupabaseConfigured ? (
-            <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowDbConfigModal(true)}
+              className="text-[10px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 cursor-pointer"
+              title="Clique para ver ou alterar credenciais do Supabase"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
               Supabase Conectado
-            </span>
+            </button>
           ) : (
-            <span className="text-[10px] text-amber-400 font-medium flex items-center gap-1" title="Configure a URL e Anon Key do Supabase nas Configurações do Administrador">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              Supabase Offline
-            </span>
+            <button
+              type="button"
+              onClick={() => setShowDbConfigModal(true)}
+              className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer underline"
+              title="Clique para configurar o Supabase neste navegador"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              Supabase Offline (Configurar)
+            </button>
           )}
         </div>
 
       </div>
+
+      {/* Modal Rápido de Configuração do Supabase */}
+      {showDbConfigModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-750 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Server size={18} className="text-yellow-400" />
+                <h3 className="font-bold text-sm text-white">Configurar Conexão Supabase</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDbConfigModal(false)}
+                className="text-slate-400 hover:text-white cursor-pointer p-1"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Insira a URL e a Chave Anônima (Anon Key) do seu projeto Supabase para habilitar a consulta direta de freelancers e dados em nuvem neste navegador.
+            </p>
+
+            <form onSubmit={handleSaveQuickDb} className="flex flex-col gap-3 text-xs">
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-slate-300">URL do Projeto (VITE_SUPABASE_URL):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="https://xyzcompany.supabase.co"
+                  value={dbUrlInput}
+                  onChange={(e) => setDbUrlInput(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-yellow-400 font-mono"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-slate-300">Chave Anônima (VITE_SUPABASE_ANON_KEY):</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                  value={dbKeyInput}
+                  onChange={(e) => setDbKeyInput(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-yellow-400 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDbConfigModal(false)}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Server size={13} />
+                  <span>Salvar & Conectar</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
