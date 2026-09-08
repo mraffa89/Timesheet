@@ -11,6 +11,12 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+
+# Uploads and temporary data files
+uploads/
+*.csv
 
 # Editor directories and files
 .vscode/*
