@@ -72,7 +72,6 @@ export default function FreelancerPortal({
   const [showPassword, setShowPassword] = useState(false);
   const [profilePhone, setProfilePhone] = useState('');
   const [profilePixKey, setProfilePixKey] = useState('');
-  const [profileSpecialty, setProfileSpecialty] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
 
@@ -137,7 +136,7 @@ export default function FreelancerPortal({
       };
     }
 
-    return { periodStart: null, periodEnd: null, periodLabel: 'Todo o histórico' };
+    return { periodStart: null, periodEnd: null, periodLabel: 'Todo o período' };
   }, [periodFilter, customStartDate, customEndDate]);
 
   // Função para verificar se a demanda pertence ao período
@@ -217,68 +216,36 @@ export default function FreelancerPortal({
     );
   };
 
-  // Status em relação ao prazo esperado
-  const getDeliveryDeadlineStatus = (task) => {
+  // Renderiza status relativo ao prazo como texto puro (verde para no prazo, vermelho para atraso)
+  const renderDeadlineStatusText = (task) => {
     const isDelivered = task.status === 'delivered' || task.status === 'paid';
     const dueDateStr = task.expectedDueDate;
     const deliveryDateStr = task.actualDeliveryDate;
 
     if (isDelivered) {
       if (!dueDateStr) {
-        return {
-          label: 'Entregue',
-          badgeClass: 'bg-green-50 text-green-700 border-green-200',
-          icon: CheckCircle2
-        };
+        return <span className="text-[11px] font-semibold text-emerald-600">Entregue no prazo</span>;
       }
       if (deliveryDateStr && deliveryDateStr <= dueDateStr) {
-        return {
-          label: 'Entregue no prazo',
-          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-          icon: CheckCircle2
-        };
+        return <span className="text-[11px] font-semibold text-emerald-600">Entregue no prazo</span>;
       } else if (deliveryDateStr && deliveryDateStr > dueDateStr) {
-        return {
-          label: 'Entregue c/ atraso',
-          badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
-          icon: AlertCircle
-        };
+        return <span className="text-[11px] font-semibold text-red-600">Entregue com atraso</span>;
       }
-      return {
-        label: 'Entregue',
-        badgeClass: 'bg-green-50 text-green-700 border-green-200',
-        icon: CheckCircle2
-      };
+      return <span className="text-[11px] font-semibold text-emerald-600">Entregue</span>;
     }
 
-    // Pendente ou em andamento
+    // Tarefa pendente ou em andamento
     if (!dueDateStr) {
-      return {
-        label: 'Sem prazo estipulado',
-        badgeClass: 'bg-gray-100 text-gray-500 border-gray-200',
-        icon: Clock
-      };
+      return <span className="text-[11px] text-gray-400">Sem prazo</span>;
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
     if (dueDateStr < todayStr) {
-      return {
-        label: 'Atrasado',
-        badgeClass: 'bg-red-50 text-red-700 border-red-200',
-        icon: AlertCircle
-      };
+      return <span className="text-[11px] font-semibold text-red-600">Atrasado</span>;
     } else if (dueDateStr === todayStr) {
-      return {
-        label: 'Vence hoje',
-        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
-        icon: Clock
-      };
+      return <span className="text-[11px] font-semibold text-amber-600">Vence hoje</span>;
     } else {
-      return {
-        label: 'No prazo',
-        badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
-        icon: Clock
-      };
+      return <span className="text-[11px] font-semibold text-emerald-600">No prazo</span>;
     }
   };
 
@@ -403,7 +370,6 @@ export default function FreelancerPortal({
     setProfilePassword(freela.password || '');
     setProfilePhone(freela.phone || '');
     setProfilePixKey(freela.pixKey || '');
-    setProfileSpecialty(freela.specialty || userSession?.specialty || 'Designer');
     setShowPassword(false);
     setProfileSuccessMsg('');
     setShowProfileModal(true);
@@ -428,7 +394,7 @@ export default function FreelancerPortal({
         password: profilePassword.trim() || freela.password,
         phone: formatPhone(profilePhone.trim()),
         pixKey: profilePixKey.trim(),
-        specialty: profileSpecialty.trim() || freela.specialty || userSession?.specialty || 'Designer',
+        specialty: freela.specialty || userSession?.specialty || 'Designer',
         hourlyRate: freela.hourlyRate !== undefined ? freela.hourlyRate : (userSession?.hourlyRate || 0),
         allowedTabs: freela.allowedTabs || ['freelancer-tasks'],
         isActive: freela.isActive !== undefined ? freela.isActive : true
@@ -443,8 +409,7 @@ export default function FreelancerPortal({
         name: updatedFreela.name,
         email: updatedFreela.username,
         phone: updatedFreela.phone,
-        pixKey: updatedFreela.pixKey,
-        specialty: updatedFreela.specialty
+        pixKey: updatedFreela.pixKey
       };
       localStorage.setItem('raffa_session_user', JSON.stringify(updatedSession));
       if (onUpdateSession) {
@@ -474,19 +439,19 @@ export default function FreelancerPortal({
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
   };
 
-  // Retorna badge visual de status geral
+  // Retorna badge visual de status geral (Entregue com preenchimento, letra e borda verde)
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'paid':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            <CheckCircle2 size={10} /> Pago
-          </span>
-        );
       case 'delivered':
         return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-300">
             <CheckCircle2 size={10} /> Entregue
+          </span>
+        );
+      case 'paid':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded border border-emerald-400">
+            <CheckCircle2 size={10} /> Pago
           </span>
         );
       case 'in_progress':
@@ -507,7 +472,7 @@ export default function FreelancerPortal({
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {/* Top Navbar (Sem o badge 'Portal do Prestador') */}
+      {/* Top Navbar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -552,7 +517,7 @@ export default function FreelancerPortal({
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full flex flex-col gap-6">
         
-        {/* Welcome Banner (Clean, sem botão 'Editar Meus Dados') */}
+        {/* Welcome Banner */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xs">
           <h2 className="text-xl font-black text-gray-950 flex items-center gap-2">
             <span>Olá, {userSession?.name?.split(' ')[0]}!</span>
@@ -563,12 +528,12 @@ export default function FreelancerPortal({
           </p>
         </div>
 
-        {/* Barra de Filtro de Período (Mês Atual, Mês Anterior, Personalizado, Todos) */}
+        {/* Barra de Filtro de Período (Mês Atual, Mês Anterior, Personalizado, Todo o período) */}
         <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-yellow-600 shrink-0" />
+            <Calendar size={16} className="text-gray-500 shrink-0" />
             <span className="text-xs font-bold text-gray-900">Período de Referência:</span>
-            <span className="text-xs font-bold text-yellow-800 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-md">
+            <span className="text-xs font-semibold text-gray-700">
               {periodLabel}
             </span>
           </div>
@@ -617,7 +582,7 @@ export default function FreelancerPortal({
                     : 'text-gray-500 hover:text-gray-900'
                 }`}
               >
-                Todos
+                Todo o período
               </button>
             </div>
 
@@ -864,8 +829,6 @@ export default function FreelancerPortal({
                   {filteredTasks.map(task => {
                     const clientName = getClientName(task.clientId);
                     const isDelivered = task.status === 'delivered' || task.status === 'paid';
-                    const deadlineInfo = getDeliveryDeadlineStatus(task);
-                    const DeadlineIcon = deadlineInfo.icon;
 
                     return (
                       <tr key={task.id} className="hover:bg-yellow-50/30 transition-colors">
@@ -904,24 +867,22 @@ export default function FreelancerPortal({
                           </span>
                         </td>
 
+                        {/* Pedido em: data em cinza claro */}
                         <td className="py-3.5 px-4 text-gray-500 font-mono text-[11px]">
                           {formatDateBR(task.requestDate)}
                         </td>
 
-                        {/* Prazo Esperado com data explícita E status relativo ao prazo */}
+                        {/* Prazo Esperado: data em cinza claro igual do pedido em, e texto puro para status (sem borda/fundo) */}
                         <td className="py-3.5 px-4">
-                          <div className="flex flex-col gap-1 items-start">
-                            <span className="font-mono text-[11px] text-gray-800 font-semibold">
-                              {task.expectedDueDate ? formatDateBR(task.expectedDueDate) : <span className="text-gray-400 font-normal">Não estipulado</span>}
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <span className="font-mono text-[11px] text-gray-500">
+                              {task.expectedDueDate ? formatDateBR(task.expectedDueDate) : <span className="text-gray-400">Sem prazo</span>}
                             </span>
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border ${deadlineInfo.badgeClass}`}>
-                              <DeadlineIcon size={10} />
-                              <span>{deadlineInfo.label}</span>
-                            </span>
+                            {renderDeadlineStatusText(task)}
                           </div>
                         </td>
 
-                        {/* Status Geral */}
+                        {/* Status Geral (Entregue em verde com borda e preenchimento verde) */}
                         <td className="py-3.5 px-4">
                           {getStatusBadge(task.status)}
                         </td>
@@ -1089,19 +1050,6 @@ export default function FreelancerPortal({
                     />
                   </div>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Especialidade / Cargo:
-                </label>
-                <input 
-                  type="text"
-                  value={profileSpecialty}
-                  onChange={(e) => setProfileSpecialty(e.target.value)}
-                  placeholder="Ex: Designer, Desenvolvedor, Redator..."
-                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-yellow-500 font-medium"
-                />
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between text-xs">

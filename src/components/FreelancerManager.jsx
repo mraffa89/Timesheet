@@ -379,6 +379,19 @@ export default function FreelancerManager({
       }));
   }, [clients]);
 
+  // Apenas clientes ativos para o cadastro e edição de demandas
+  const activeClientOptions = useMemo(() => {
+    return clients
+      .filter(c => c.isActive !== false || c.id === taskForm.clientId)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }))
+      .map(c => ({
+        value: c.id,
+        label: c.name,
+        sublabel: c.cnpj ? formatCpfCnpj(c.cnpj) : '',
+        keywords: `${c.cnpj || ''} ${c.email || ''}`
+      }));
+  }, [clients, taskForm.clientId]);
+
   const freelancerOptions = useMemo(() => {
     return [...freelancers]
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }))
@@ -1507,7 +1520,7 @@ export default function FreelancerManager({
                   <SearchableSelect
                     value={taskForm.clientId}
                     onChange={(val) => setTaskForm({ ...taskForm, clientId: val })}
-                    options={clientOptions}
+                    options={activeClientOptions}
                     placeholder="Pesquisar ou selecionar cliente..."
                     searchPlaceholder="Digite o nome ou CNPJ do cliente..."
                     icon={Building}
