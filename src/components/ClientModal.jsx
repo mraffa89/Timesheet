@@ -24,6 +24,16 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
   const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [targetMergeClientId, setTargetMergeClientId] = useState('');
 
+  // Fechar modal ao pressionar ESC
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -183,7 +193,14 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div 
         className="bg-white rounded-2xl border border-gray-200 max-w-[540px] w-full p-6 shadow-2xl animate-in fade-in-0 zoom-in-95 my-8 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}

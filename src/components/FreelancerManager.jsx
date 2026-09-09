@@ -33,7 +33,8 @@ import {
   CreditCard,
   Layers,
   FileSpreadsheet,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -339,6 +340,23 @@ export default function FreelancerManager({
   const [copiedFreelancerEmailBody, setCopiedFreelancerEmailBody] = useState(false);
   const [isSendingFreelancerEmail, setIsSendingFreelancerEmail] = useState(false);
   const [freelancerEmailSuccess, setFreelancerEmailSuccess] = useState(false);
+
+  // Fechar qualquer modal ativo ao pressionar tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (isFreelancerEmailModalOpen) setIsFreelancerEmailModalOpen(false);
+        else if (viewingReceiptTask) setViewingReceiptTask(null);
+        else if (pixSuccessData) setPixSuccessData(null);
+        else if (isPixPaymentModalOpen && !isSubmittingPix) setIsPixPaymentModalOpen(false);
+        else if (isBatchModalOpen) setIsBatchModalOpen(false);
+        else if (isFreelancerModalOpen) setIsFreelancerModalOpen(false);
+        else if (isTaskModalOpen) setIsTaskModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFreelancerEmailModalOpen, viewingReceiptTask, pixSuccessData, isPixPaymentModalOpen, isSubmittingPix, isBatchModalOpen, isFreelancerModalOpen, isTaskModalOpen]);
 
   // Form states - Task
   const [taskForm, setTaskForm] = useState({
@@ -956,7 +974,7 @@ export default function FreelancerManager({
     setIsFreelancerEmailModalOpen(true);
   };
 
-  const handleLaunchFreelancerEmailClient = async () => {
+  const handleLaunchFreelancerEmailClient = () => {
     if (!freelancerEmailTo.trim()) {
       alert('Por favor, informe o e-mail do destinatário.');
       return;
@@ -965,28 +983,37 @@ export default function FreelancerManager({
     try {
       setIsSendingFreelancerEmail(true);
 
-      // 1. Gera e faz o download do PDF executivo de fechamento
-      await handleExportPayrollPDF();
+      // Copia o texto integral para o clipboard como garantia
+      try {
+        navigator.clipboard.writeText(`Para: ${freelancerEmailTo}\nAssunto: ${freelancerEmailSubject}\n\n${freelancerEmailBody}`);
+      } catch (_) {}
 
-      // 2. Monta a URL mailto conforme RFC 6068 (não codificar @ no destinatário)
       const to = freelancerEmailTo.trim();
       const cc = freelancerEmailCc.trim();
       const subj = freelancerEmailSubject;
       const body = freelancerEmailBody;
 
+      // Orçamento de segurança para URL mailto (< 1800 caracteres totais)
+      const baseLen = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subj)}&body=`.length;
+      const budget = Math.max(200, 1800 - baseLen);
+      let safeBody = body;
+      if (encodeURIComponent(safeBody).length > budget) {
+        let truncated = safeBody;
+        while (encodeURIComponent(truncated + '\n\n[Mensagem completa disponível no PDF anexo]').length > budget && truncated.length > 50) {
+          truncated = truncated.substring(0, truncated.length - 50);
+        }
+        safeBody = truncated + '\n\n[Mensagem completa disponível no PDF anexo]';
+      }
+
       const params = [];
       if (cc) params.push(`cc=${encodeURIComponent(cc)}`);
       if (subj) params.push(`subject=${encodeURIComponent(subj)}`);
-      if (body) {
-        // Limita comprimento do body na URL mailto para prevenir bloqueio em clientes de desktop
-        const safeBody = body.length > 1500 ? body.substring(0, 1500) + '\n\n[Mensagem completa disponível no PDF anexo]' : body;
-        params.push(`body=${encodeURIComponent(safeBody)}`);
-      }
+      if (safeBody) params.push(`body=${encodeURIComponent(safeBody)}`);
 
       const queryString = params.length > 0 ? `?${params.join('&')}` : '';
       const mailtoUrl = `mailto:${to}${queryString}`;
 
-      // 3. Disparo ultra-seguro via <iframe> oculto (previne 100% que o browser navegue ou fique com tela em branco)
+      // 1. Disparo síncrono seguro via <iframe> oculto (nunca navega nem deixa tela branca)
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       iframe.setAttribute('src', mailtoUrl);
@@ -995,7 +1022,12 @@ export default function FreelancerManager({
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }, 1000);
 
-      // 4. Feedback visual de sucesso
+      // 2. Dispara geração e download do PDF em segundo plano
+      handleExportPayrollPDF().catch((err) => {
+        console.warn('Erro ao gerar PDF:', err);
+      });
+
+      // 3. Feedback visual de sucesso
       setFreelancerEmailSuccess(true);
     } catch (err) {
       alert('Erro ao processar fechamento e e-mail: ' + err.message);
@@ -1004,7 +1036,7 @@ export default function FreelancerManager({
     }
   };
 
-  const handleLaunchGmailWeb = async () => {
+  const handleLaunchGmailWeb = () => {
     if (!freelancerEmailTo.trim()) {
       alert('Por favor, informe o e-mail do destinatário.');
       return;
@@ -1012,15 +1044,39 @@ export default function FreelancerManager({
 
     try {
       setIsSendingFreelancerEmail(true);
-      await handleExportPayrollPDF();
+
+      // Copia o texto integral para a área de transferência caso o usuário precise colar no Gmail
+      try {
+        navigator.clipboard.writeText(`Para: ${freelancerEmailTo}\nAssunto: ${freelancerEmailSubject}\n\n${freelancerEmailBody}`);
+      } catch (_) {}
 
       const to = encodeURIComponent(freelancerEmailTo.trim());
       const cc = freelancerEmailCc.trim() ? encodeURIComponent(freelancerEmailCc.trim()) : '';
       const subj = encodeURIComponent(freelancerEmailSubject);
-      const body = encodeURIComponent(freelancerEmailBody);
+
+      // Orçamento estrito para o endpoint do Gmail não devolver tela branca por URI Too Long (< 1800 chars)
+      const baseLen = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=`.length;
+      const budget = Math.max(200, 1800 - baseLen);
+      let safeBody = freelancerEmailBody;
+      if (encodeURIComponent(safeBody).length > budget) {
+        let truncated = safeBody;
+        while (encodeURIComponent(truncated + '\n\n[Mensagem completa disponível no PDF anexo]').length > budget && truncated.length > 50) {
+          truncated = truncated.substring(0, truncated.length - 50);
+        }
+        safeBody = truncated + '\n\n[Mensagem completa disponível no PDF anexo]';
+      }
+      const body = encodeURIComponent(safeBody);
 
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=${body}`;
+
+      // Abre síncrono no clique do usuário (100% imune a bloqueios de pop-up e abas em branco)
       window.open(gmailUrl, '_blank');
+
+      // Dispara o download do PDF
+      handleExportPayrollPDF().catch((err) => {
+        console.warn('Erro ao gerar PDF:', err);
+      });
+
       setFreelancerEmailSuccess(true);
     } catch (err) {
       alert('Erro ao abrir Gmail: ' + err.message);

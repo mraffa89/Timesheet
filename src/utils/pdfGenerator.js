@@ -575,6 +575,8 @@ export async function generatePayrollPdf({
         ];
       });
 
+  const totalHoursStr = `${(Number(totalHours) || 0).toFixed(1).replace('.', ',')}h`;
+
   autoTable(doc, {
     startY: tableStartY,
     margin: { left: marginX, right: marginX },

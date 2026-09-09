@@ -33,7 +33,18 @@ export default function ConfirmModal({ isOpen, onClose, onConfirm, title, messag
   if (!isOpen) return null;
 
   return (
-    <dialog ref={dialogRef} onClose={onClose} aria-labelledby="confirm-title" className="confirm-dialog">
+    <dialog 
+      ref={dialogRef} 
+      onClose={onClose} 
+      onClick={(e) => {
+        const rect = dialogRef.current?.getBoundingClientRect();
+        if (rect && (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)) {
+          onClose();
+        }
+      }}
+      aria-labelledby="confirm-title" 
+      className="confirm-dialog"
+    >
       <div className="confirm-dialog-content">
         <div className="confirm-dialog-icon">
           <AlertTriangle size={32} />

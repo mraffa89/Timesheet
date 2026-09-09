@@ -542,7 +542,18 @@ export default function ImportModal({ isOpen, onClose, clients, onImportComplete
   };
 
   return (
-    <dialog ref={dialogRef} onClose={handleClose} className="bg-white p-6 rounded-xl border border-gray-200" style={{ maxWidth: step === 3 ? '880px' : step === 2 ? '680px' : '550px', width: '90%' }}>
+    <dialog 
+      ref={dialogRef} 
+      onClose={handleClose} 
+      onClick={(e) => {
+        const rect = dialogRef.current?.getBoundingClientRect();
+        if (rect && (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)) {
+          handleClose();
+        }
+      }}
+      className="bg-white p-6 rounded-xl border border-gray-200" 
+      style={{ maxWidth: step === 3 ? '880px' : step === 2 ? '680px' : '550px', width: '90%' }}
+    >
       <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
         <h3 className="font-title text-base font-bold text-gray-900">Importar CSV do Planyway</h3>
         <button className="text-gray-400 hover:text-gray-900 cursor-pointer" onClick={handleClose}>

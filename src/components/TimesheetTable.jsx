@@ -545,7 +545,17 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
       </div>
 
       {/* Add/Edit Modal (With Searchable Client Selection) */}
-      <dialog ref={dialogRef} onClose={handleCloseModal} className="bg-white p-6 rounded-xl border border-gray-200 max-w-[460px] w-full">
+      <dialog 
+        ref={dialogRef} 
+        onClose={handleCloseModal} 
+        onClick={(e) => {
+          const rect = dialogRef.current?.getBoundingClientRect();
+          if (rect && (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom)) {
+            handleCloseModal();
+          }
+        }}
+        className="bg-white p-6 rounded-xl border border-gray-200 max-w-[460px] w-full"
+      >
         <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
           <h3 className="font-title text-base font-bold text-gray-900">
             {editingEntry ? 'Editar Lançamento' : 'Lançar Nova Demanda'}

@@ -67,6 +67,16 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
   const [emailBody, setEmailBody] = useState('');
   const [copiedEmailBody, setCopiedEmailBody] = useState(false);
   
+  // Fechar modal de e-mail com ESC
+  useEffect(() => {
+    if (!isEmailModalOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsEmailModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEmailModalOpen]);
+  
   // Financial State
   const [financials, setFinancials] = useState({
     fixedFee: 0,
@@ -553,16 +563,28 @@ Atenciosamente,
     setIsEmailModalOpen(true);
   };
 
-  const handleLaunchEmailClient = async () => {
+  const handleLaunchEmailClient = () => {
     try {
-      // 1. Baixa o PDF para que o usuário o anexe com facilidade
-      await handleGeneratePdf();
+      // Copia o texto integral para a área de transferência como garantia
+      try {
+        navigator.clipboard.writeText(`Para: ${client?.email || ''}\nAssunto: ${emailSubject}\n\n${emailBody}`);
+      } catch (_) {}
 
-      // 2. Dispara o cliente de e-mail com Para, CC, Assunto e Corpo preenchidos
       const to = client?.email || '';
       const cc = client?.additionalEmail || '';
       const subj = encodeURIComponent(emailSubject);
-      const safeBody = emailBody.length > 1500 ? emailBody.substring(0, 1500) + '\n\n[Mensagem completa disponível no Demonstrativo em anexo]' : emailBody;
+
+      // Orçamento seguro para URL mailto (< 1800 caracteres totais)
+      const baseLen = `mailto:${to}?cc=${encodeURIComponent(cc)}&subject=${subj}&body=`.length;
+      const budget = Math.max(200, 1800 - baseLen);
+      let safeBody = emailBody;
+      if (encodeURIComponent(safeBody).length > budget) {
+        let truncated = safeBody;
+        while (encodeURIComponent(truncated + '\n\n[Mensagem completa no Demonstrativo anexo]').length > budget && truncated.length > 50) {
+          truncated = truncated.substring(0, truncated.length - 50);
+        }
+        safeBody = truncated + '\n\n[Mensagem completa no Demonstrativo anexo]';
+      }
       const body = encodeURIComponent(safeBody);
 
       let mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
@@ -570,7 +592,7 @@ Atenciosamente,
         mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
       }
 
-      // Disparo ultra-seguro via <iframe> oculto (previne tela em branco do browser)
+      // 1. Disparo síncrono ultra-seguro via <iframe> oculto (nunca navega nem deixa tela branca)
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       iframe.setAttribute('src', mailtoUrl);
@@ -578,22 +600,49 @@ Atenciosamente,
       setTimeout(() => {
         if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }, 1000);
+
+      // 2. Dispara geração e download do PDF em segundo plano
+      handleGeneratePdf().catch((err) => {
+        console.warn('Erro ao gerar PDF em segundo plano:', err);
+      });
     } catch (err) {
       alert('Erro ao preparar e-mail: ' + err.message);
     }
   };
 
-  const handleLaunchGmailWeb = async () => {
+  const handleLaunchGmailWeb = () => {
     try {
-      await handleGeneratePdf();
+      // Copia o texto integral para o clipboard caso o usuário precise colar no Gmail
+      try {
+        navigator.clipboard.writeText(`Para: ${client?.email || ''}\nAssunto: ${emailSubject}\n\n${emailBody}`);
+      } catch (_) {}
 
       const to = encodeURIComponent(client?.email || '');
       const cc = client?.additionalEmail ? encodeURIComponent(client.additionalEmail) : '';
       const subj = encodeURIComponent(emailSubject);
-      const body = encodeURIComponent(emailBody);
+
+      // Orçamento estrito para o endpoint do Gmail não devolver tela branca por URI Too Long (< 1800 chars)
+      const baseLen = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=`.length;
+      const budget = Math.max(200, 1800 - baseLen);
+      let safeBody = emailBody;
+      if (encodeURIComponent(safeBody).length > budget) {
+        let truncated = safeBody;
+        while (encodeURIComponent(truncated + '\n\n[Mensagem completa no Demonstrativo anexo]').length > budget && truncated.length > 50) {
+          truncated = truncated.substring(0, truncated.length - 50);
+        }
+        safeBody = truncated + '\n\n[Mensagem completa no Demonstrativo anexo]';
+      }
+      const body = encodeURIComponent(safeBody);
 
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=${body}`;
+
+      // Abre síncrono no clique do usuário (100% livre de bloqueios ou abas em branco)
       window.open(gmailUrl, '_blank');
+
+      // Dispara geração e download do PDF em segundo plano
+      handleGeneratePdf().catch((err) => {
+        console.warn('Erro ao gerar PDF em segundo plano:', err);
+      });
     } catch (err) {
       alert('Erro ao abrir Gmail: ' + err.message);
     }
@@ -1031,7 +1080,9 @@ Atenciosamente,
       {isEmailModalOpen && (
         <div 
           className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setIsEmailModalOpen(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsEmailModalOpen(false);
+          }}
         >
           <div 
             className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 my-8 max-h-[90vh] overflow-y-auto"
