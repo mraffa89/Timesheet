@@ -500,7 +500,6 @@ export async function generatePayrollPdf({
   const targetSpecialty = freelancer?.specialty || 'Prestador de Serviço';
   const targetPhone = freelancer?.phone ? formatPhone(freelancer.phone) : 'Não informado';
   const targetPix = freelancer?.pixKey || 'Não cadastrada';
-  const targetRate = freelancer?.hourlyRate ? formatCurrency(freelancer.hourlyRate) + '/h' : 'Valor sob demanda';
 
   // Section Label
   doc.setFont('helvetica', 'bold');
@@ -521,10 +520,9 @@ export async function generatePayrollPdf({
   doc.text(`Função / Especialidade: ${targetSpecialty}`, marginX + 5, prestadorTopY + 17);
   doc.text(`Telefone / WhatsApp: ${targetPhone}`, marginX + 5, prestadorTopY + 21.5);
 
-  // Right Column
-  doc.text(`Chave PIX: ${targetPix}`, rightX - 5, prestadorTopY + 12, { align: 'right' });
-  doc.text(`Valor da Hora Técnica: ${targetRate}`, rightX - 5, prestadorTopY + 17, { align: 'right' });
-  doc.text(`Total de Demandas: ${tasks.length}`, rightX - 5, prestadorTopY + 21.5, { align: 'right' });
+  // Right Column (Sem valor da hora técnica)
+  doc.text(`Chave PIX: ${targetPix}`, rightX - 5, prestadorTopY + 14, { align: 'right' });
+  doc.text(`Total de Demandas: ${tasks.length}`, rightX - 5, prestadorTopY + 19.5, { align: 'right' });
 
   // ═══════ SEÇÃO 3: TABELA DE DEMANDAS / TAREFAS ═══════
   const tableStartY = prestadorTopY + prestadorBoxHeight + 8;
@@ -542,6 +540,15 @@ export async function generatePayrollPdf({
   doc.setTextColor(160, 160, 160);
   doc.text(entryCountText, rightX, tableStartY - 2, { align: 'right' });
 
+  const formatShortDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const clean = String(dateStr).split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length !== 3) return dateStr;
+    const yearShort = parts[0].slice(-2);
+    return `${parts[2]}/${parts[1]}/${yearShort}`;
+  };
+
   const fRate = freelancer ? (parseFloat(freelancer.hourlyRate) || 0) : 0;
   const tableRows = tasks.length === 0
     ? [['-', 'Nenhum serviço registrado neste período.', '-', '-', '-', '0,0h', '-', '-']]
@@ -555,8 +562,8 @@ export async function generatePayrollPdf({
           t.title || 'Sem título',
           cName,
           t.category || 'Digital',
-          formatDate(t.requestDate),
-          formatDate(t.actualDeliveryDate),
+          formatShortDate(t.requestDate),
+          formatShortDate(t.actualDeliveryDate),
           `${h.toFixed(1).replace('.', ',')}h`,
           fRate > 0 ? formatCurrency(subtotal) : '-',
           statusLabel
@@ -577,19 +584,19 @@ export async function generatePayrollPdf({
       fillColor: [30, 30, 30],
       textColor: [255, 255, 255],
       fontStyle: 'bold',
-      fontSize: 8,
-      cellPadding: 3.2,
+      fontSize: 7.5,
+      cellPadding: { top: 2.5, bottom: 2.5, left: 1.5, right: 1.5 },
       halign: 'left'
     },
     columnStyles: {
       0: { cellWidth: 44, halign: 'left', fontStyle: 'bold' },
-      1: { cellWidth: 30, halign: 'left' },
-      2: { cellWidth: 24, halign: 'left' },
-      3: { cellWidth: 18, halign: 'center' },
-      4: { cellWidth: 18, halign: 'center' },
+      1: { cellWidth: 28, halign: 'left' },
+      2: { cellWidth: 22, halign: 'left' },
+      3: { cellWidth: 21, halign: 'center' },
+      4: { cellWidth: 20, halign: 'center' },
       5: { cellWidth: 14, halign: 'right', fontStyle: 'bold' },
       6: { cellWidth: 18, halign: 'right', fontStyle: 'bold' },
-      7: { cellWidth: 14, halign: 'center', fontStyle: 'bold' }
+      7: { cellWidth: 15, halign: 'center', fontStyle: 'bold' }
     },
     bodyStyles: {
       fontSize: 7.5,
@@ -632,7 +639,7 @@ export async function generatePayrollPdf({
 
   const boxesTopY = sectionLabelY + 4;
   const summaryBoxWidth = 72;
-  const summaryBoxHeight = allPaid ? 36 : 32;
+  const summaryBoxHeight = allPaid ? 36 : 28;
   const summaryBoxX = rightX - summaryBoxWidth;
   const payBoxWidth = summaryBoxX - marginX - 6;
 
@@ -686,7 +693,7 @@ export async function generatePayrollPdf({
     doc.text(hasAnyPaid ? 'Status: PARCIALMENTE PAGO' : 'Status: Fechamento Aprovado para Transferência', marginX + 4, boxesTopY + 24);
   }
 
-  // Right Box: Totais
+  // Right Box: Totais (Sem valor da hora técnica)
   doc.setFillColor(250, 250, 250);
   doc.setDrawColor(210, 210, 210);
   doc.setLineWidth(0.3);
@@ -700,24 +707,16 @@ export async function generatePayrollPdf({
   doc.setTextColor(20, 20, 20);
   doc.text(totalHoursStr, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 8, { align: 'right' });
 
-  if (freelancer?.hourlyRate > 0) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Valor da Hora:', summaryBoxX + 4, boxesTopY + 15);
-    doc.text(`${formatCurrency(freelancer.hourlyRate)}/h`, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 15, { align: 'right' });
-  }
-
   doc.setDrawColor(210, 210, 210);
   doc.setLineWidth(0.3);
-  doc.line(summaryBoxX + 4, boxesTopY + 20, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 20);
+  doc.line(summaryBoxX + 4, boxesTopY + 14, summaryBoxX + summaryBoxWidth - 4, boxesTopY + 14);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(20, 20, 20);
-  doc.text(allPaid ? 'Total Quitado:' : 'Total a Pagar:', summaryBoxX + 4, boxesTopY + 27);
+  doc.text(allPaid ? 'Total Quitado:' : 'Total a Pagar:', summaryBoxX + 4, boxesTopY + 21);
   doc.setFontSize(11.5);
-  doc.text(formatCurrency(totalAmount), summaryBoxX + summaryBoxWidth - 4, boxesTopY + 27, { align: 'right' });
+  doc.text(formatCurrency(totalAmount), summaryBoxX + summaryBoxWidth - 4, boxesTopY + 21, { align: 'right' });
 
   // ═══════ SEÇÃO 5: FOOTER WATERMARK ═══════
   const footerY = 284;
@@ -728,8 +727,193 @@ export async function generatePayrollPdf({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(140, 140, 140);
-  doc.text(`${company.brandName || 'Matheus Raffa'} | ${company.brandSubtitle || 'Inteligência Digital'} | ${company.website || 'matheusraffa.com.br'}`, marginX, footerY + 5);
+  const p1PageLabel = (allPaid || hasAnyPaid || collectedPaymentIds.length > 0) ? 'Página 1 de 2' : 'Página 1 de 1';
+  doc.text(`${company.brandName || 'Matheus Raffa'} | ${company.brandSubtitle || 'Inteligência Digital'} | ${p1PageLabel}`, marginX, footerY + 5);
   doc.text(`${company.email || 'contato@matheusraffa.com.br'} | ${company.phone || ''}`, rightX, footerY + 5, { align: 'right' });
+
+  // ═══════ PÁGINA 2: COMPROVANTE OFICIAL PIX ASAAS (SE QUITADO) ═══════
+  if (allPaid || hasAnyPaid || collectedPaymentIds.length > 0) {
+    doc.addPage();
+
+    const p2MarginX = 14;
+    const p2RightX = 196;
+    const p2Width = p2RightX - p2MarginX;
+
+    // Header da Página 2
+    if (logoData) {
+      doc.addImage(logoData, 'PNG', p2MarginX, 14, 20, 20);
+    }
+    const headerTextX = logoData ? p2MarginX + 24 : p2MarginX;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(20, 20, 20);
+    doc.text('Comprovante de Transferência PIX', headerTextX, 21);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Asaas Gestão Financeira  |  Sistema de Pagamentos Instantâneos (SPI / Bacen)', headerTextX, 26.5);
+    doc.text(`Via do Favorecido / Documento de Quitação Oficial`, headerTextX, 31);
+
+    // Badge "PAGO VIA PIX"
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setFillColor(30, 30, 30);
+    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(p2RightX - 44, 15, 44, 6, 1, 1, 'FD');
+    doc.text('TRANSFERÊNCIA PIX CONCLUÍDA', p2RightX - 42.5, 19.2);
+
+    // Linha divisória do header
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.4);
+    doc.line(p2MarginX, 36, p2RightX, 36);
+
+    // Card de Destaque: Valor da Transferência
+    const valueBoxY = 41;
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(210, 210, 210);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(p2MarginX, valueBoxY, p2Width, 22, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(90, 90, 90);
+    doc.text('Valor Quitado / Transferido', p2MarginX + 6, valueBoxY + 8);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.setTextColor(20, 20, 20);
+    doc.text(formatCurrency(totalAmount), p2MarginX + 6, valueBoxY + 17);
+
+    const pDateStr = collectedPaymentDates.length > 0 ? formatDate(collectedPaymentDates[0]) : todayStr;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Data da Efetivação: ${pDateStr}`, p2RightX - 6, valueBoxY + 10, { align: 'right' });
+    doc.text(`Canal de Liquidação: API / Internet Banking Asaas`, p2RightX - 6, valueBoxY + 16, { align: 'right' });
+
+    // Seção Origem (Pagador)
+    let currentY = valueBoxY + 28;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text('› DADOS DO PAGADOR (ORIGEM)', p2MarginX, currentY);
+
+    currentY += 4;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(220, 220, 220);
+    doc.roundedRect(p2MarginX, currentY, p2Width, 24, 1.5, 1.5, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Nome / Razão Social:', p2MarginX + 5, currentY + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(company.legalName || company.brandName || 'MHB Raffa', p2MarginX + 42, currentY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('CNPJ:', p2MarginX + 5, currentY + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(company.cnpj || 'Não informado', p2MarginX + 42, currentY + 13);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Instituição Liquidante:', p2MarginX + 5, currentY + 19);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text('ASAAS IP S.A. (ISPB: 27855692)', p2MarginX + 42, currentY + 19);
+
+    // Seção Destino (Favorecido)
+    currentY += 30;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text('› DADOS DO FAVORECIDO (DESTINO)', p2MarginX, currentY);
+
+    currentY += 4;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(220, 220, 220);
+    doc.roundedRect(p2MarginX, currentY, p2Width, 24, 1.5, 1.5, 'FD');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Nome do Favorecido:', p2MarginX + 5, currentY + 7);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(targetName, p2MarginX + 42, currentY + 7);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Chave PIX:', p2MarginX + 5, currentY + 13);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(targetPix, p2MarginX + 42, currentY + 13);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Finalidade do Pagamento:', p2MarginX + 5, currentY + 19);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(`Fechamento de Serviços Prestados (${tasks.length} demandas / ${totalHoursStr})`, p2MarginX + 42, currentY + 19);
+
+    // Seção Protocolo / Autenticação da Transação
+    currentY += 30;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text('› AUTENTICAÇÃO DA TRANSAÇÃO & PROTOCOLO PIX', p2MarginX, currentY);
+
+    currentY += 4;
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(220, 220, 220);
+    doc.roundedRect(p2MarginX, currentY, p2Width, 34, 1.5, 1.5, 'FD');
+
+    const pIdStr = collectedPaymentIds.length > 0 ? collectedPaymentIds.join(', ') : 'pix_' + Date.now();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 100, 100);
+    doc.text('ID da Transferência Asaas:', p2MarginX + 5, currentY + 8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 30, 30);
+    doc.text(pIdStr, p2MarginX + 5, currentY + 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text('Status no Sistema Financeiro:', p2MarginX + 5, currentY + 22);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(20, 20, 20);
+    doc.text('LIQUIDADO / TRANSFERIDO VIA PIX', p2MarginX + 48, currentY + 22);
+
+    if (collectedReceiptUrls.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(20, 20, 20);
+      const shortUrl = collectedReceiptUrls[0].length > 60 ? collectedReceiptUrls[0].substring(0, 58) + '...' : collectedReceiptUrls[0];
+      doc.textWithLink(`› Acessar Comprovante Digital Asaas Oficial (Online): ${shortUrl}`, p2MarginX + 5, currentY + 29, { url: collectedReceiptUrls[0] });
+    } else {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.setTextColor(110, 110, 110);
+      doc.text('Autenticação gerada pelo sistema de liquidação instantânea via API Asaas.', p2MarginX + 5, currentY + 29);
+    }
+
+    // Rodapé da Página 2
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.2);
+    doc.line(p2MarginX, footerY, p2RightX, footerY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`Comprovante emitido eletronicamente  •  Página 2 de 2`, p2MarginX, footerY + 5);
+    doc.text(`${company.brandName || 'Matheus Raffa'} | ${company.phone || ''}`, p2RightX, footerY + 5, { align: 'right' });
+  }
 
   return doc;
 }

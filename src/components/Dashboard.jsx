@@ -768,40 +768,48 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
             </p>
           </div>
         ) : (
-          <div className="relative w-full overflow-hidden">
+          <div className="relative w-full overflow-visible">
             
-            {/* Popover no Hover */}
-            {hoveredClientChart && (
-              <div 
-                className="absolute z-30 bg-gray-950 text-white rounded-xl p-3 shadow-xl pointer-events-none text-xs flex flex-col gap-1 border border-gray-800 animate-in fade-in-0 -translate-x-1/2"
-                style={{
-                  left: `${(hoveredClientChart.centerX / svgViewBoxWidth) * 100}%`,
-                  top: '10px'
-                }}
-              >
-                <div className="font-bold text-sm text-yellow-400">
-                  {hoveredClientChart.client.name} ({hoveredClientChart.client.initials})
+            {/* Popover no Hover (extrapola a seção e não é cortado) */}
+            {hoveredClientChart && (() => {
+              const percentX = (hoveredClientChart.centerX / svgViewBoxWidth) * 100;
+              const transformClass = percentX < 20 
+                ? 'translate-x-0' 
+                : percentX > 80 
+                  ? '-translate-x-full' 
+                  : '-translate-x-1/2';
+              return (
+                <div 
+                  className={`absolute z-50 bg-gray-950/95 backdrop-blur-md text-white rounded-xl p-3.5 shadow-2xl pointer-events-none text-xs flex flex-col gap-1 border border-gray-800 transition-all duration-150 ${transformClass}`}
+                  style={{
+                    left: `${percentX}%`,
+                    top: '-15px'
+                  }}
+                >
+                  <div className="font-bold text-sm text-yellow-400">
+                    {hoveredClientChart.client.name} ({hoveredClientChart.client.initials})
+                  </div>
+                  <div className="flex items-center justify-between gap-4 text-gray-300">
+                    <span>Horas no Período:</span>
+                    <strong className="text-white">{hoveredClientChart.client.totalHours.toFixed(1).replace('.', ',')}h</strong>
+                  </div>
+                  <div className="text-[10px] text-gray-400 pl-2 border-l border-gray-700">
+                    {hoveredClientChart.client.billableHours.toFixed(1).replace('.', ',')}h faturáveis • {hoveredClientChart.client.nonBillableHours.toFixed(1).replace('.', ',')}h internas
+                  </div>
+                  <div className="flex items-center justify-between gap-4 text-yellow-500 font-semibold border-t border-gray-800 pt-1 mt-0.5">
+                    <span>Faturamento:</span>
+                    <span>{formatCurrency(hoveredClientChart.client.billing)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 text-indigo-300">
+                    <span>Média Histórica:</span>
+                    <strong className="text-indigo-400">{hoveredClientChart.client.historicalAvgHours.toFixed(1).replace('.', ',')}h/mês</strong>
+                  </div>
+                  <div className="text-[10px] text-gray-400">
+                    Total histórico: {hoveredClientChart.client.totalHistoricalHours.toFixed(1).replace('.', ',')}h ({hoveredClientChart.client.historicalMonthsCount} {hoveredClientChart.client.historicalMonthsCount === 1 ? 'mês' : 'meses'})
+                  </div>
                 </div>
-                <div className="flex items-center justify-between gap-4 text-gray-300">
-                  <span>Horas no Período:</span>
-                  <strong className="text-white">{hoveredClientChart.client.totalHours.toFixed(1).replace('.', ',')}h</strong>
-                </div>
-                <div className="text-[10px] text-gray-400 pl-2 border-l border-gray-700">
-                  {hoveredClientChart.client.billableHours.toFixed(1).replace('.', ',')}h faturáveis • {hoveredClientChart.client.nonBillableHours.toFixed(1).replace('.', ',')}h internas
-                </div>
-                <div className="flex items-center justify-between gap-4 text-yellow-500 font-semibold border-t border-gray-800 pt-1 mt-0.5">
-                  <span>Faturamento:</span>
-                  <span>{formatCurrency(hoveredClientChart.client.billing)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 text-indigo-300">
-                  <span>Média Histórica:</span>
-                  <strong className="text-indigo-400">{hoveredClientChart.client.historicalAvgHours.toFixed(1).replace('.', ',')}h/mês</strong>
-                </div>
-                <div className="text-[10px] text-gray-400">
-                  Total histórico: {hoveredClientChart.client.totalHistoricalHours.toFixed(1).replace('.', ',')}h ({hoveredClientChart.client.historicalMonthsCount} {hoveredClientChart.client.historicalMonthsCount === 1 ? 'mês' : 'meses'})
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* SVG Responsivo com viewBox - Ajuste 100% sem Scrollbar */}
             <svg 

@@ -31,7 +31,8 @@ import {
   ArrowDown,
   Receipt,
   CreditCard,
-  Layers
+  Layers,
+  FileSpreadsheet
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1804,176 +1805,182 @@ export default function FreelancerManager({
       {activeSubTab === 'payroll' && (
         <div className="flex flex-col gap-6">
           {/* Controls / Filter bar */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-gray-50 text-yellow-600 rounded-xl border border-gray-200">
-                  <Calendar size={18} />
+          <div className="bg-white border border-gray-200 rounded-2xl p-4.5 shadow-2xs flex flex-col gap-4">
+            {/* Linha 1: Filtros de Período, Prestador e Status */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-2 mr-1">
+                  <div className="p-2 bg-yellow-50 text-yellow-600 rounded-xl border border-yellow-150 shrink-0">
+                    <Calendar size={18} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Período</span>
+                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">{payrollPeriodLabel}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Período de Fechamento</span>
-                  <span className="text-xs font-bold text-gray-900">{payrollPeriodLabel}</span>
-                </div>
-              </div>
 
-              {/* 4 Botões de Filtro de Período */}
-              <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setPayrollPeriodFilter('current_month')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollPeriodFilter === 'current_month'
-                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                >
-                  Mês Atual
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayrollPeriodFilter('prev_month')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollPeriodFilter === 'prev_month'
-                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                >
-                  Mês Anterior
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayrollPeriodFilter('select_month')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollPeriodFilter === 'select_month'
-                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                >
-                  Selecionar Mês
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayrollPeriodFilter('custom')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollPeriodFilter === 'custom'
-                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                >
-                  Personalizado
-                </button>
-              </div>
-
-              {payrollPeriodFilter === 'select_month' && (
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1 text-xs animate-in fade-in-0">
-                  <select
-                    value={payrollSelectedMonth}
-                    onChange={(e) => setPayrollSelectedMonth(e.target.value)}
-                    className="bg-transparent font-semibold text-gray-800 focus:outline-none cursor-pointer text-xs"
+                {/* 4 Botões de Filtro de Período */}
+                <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setPayrollPeriodFilter('current_month')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollPeriodFilter === 'current_month'
+                        ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
                   >
-                    {uniqueMonths.map(m => (
-                      <option key={m} value={m}>{getMonthNamePT(m)}</option>
-                    ))}
-                  </select>
+                    Mês Atual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayrollPeriodFilter('prev_month')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollPeriodFilter === 'prev_month'
+                        ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                  >
+                    Mês Anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayrollPeriodFilter('select_month')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollPeriodFilter === 'select_month'
+                        ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                  >
+                    Selecionar Mês
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayrollPeriodFilter('custom')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollPeriodFilter === 'custom'
+                        ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                  >
+                    Personalizado
+                  </button>
                 </div>
-              )}
 
-              {payrollPeriodFilter === 'custom' && (
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs animate-in fade-in-0">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">De:</span>
-                  <input
-                    type="date"
-                    value={payrollCustomStartDate}
-                    onChange={(e) => setPayrollCustomStartDate(e.target.value)}
-                    className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
-                  />
-                  <span className="text-[10px] font-bold text-gray-500 uppercase">Até:</span>
-                  <input
-                    type="date"
-                    value={payrollCustomEndDate}
-                    onChange={(e) => setPayrollCustomEndDate(e.target.value)}
-                    className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
-                  />
-                </div>
-              )}
+                {payrollPeriodFilter === 'select_month' && (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1 text-xs animate-in fade-in-0">
+                    <select
+                      value={payrollSelectedMonth}
+                      onChange={(e) => setPayrollSelectedMonth(e.target.value)}
+                      className="bg-transparent font-semibold text-gray-800 focus:outline-none cursor-pointer text-xs"
+                    >
+                      {uniqueMonths.map(m => (
+                        <option key={m} value={m}>{getMonthNamePT(m)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-              <div className="w-56">
-                <SearchableSelect
-                  value={payrollFreelancerId}
-                  onChange={setPayrollFreelancerId}
-                  options={filterFreelancerOptions}
-                  placeholder="Prestador"
-                  searchPlaceholder="Filtrar prestador..."
-                  icon={Users}
-                  buttonClassName="py-1.5 bg-white border-gray-200"
-                />
+                {payrollPeriodFilter === 'custom' && (
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs animate-in fade-in-0">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">De:</span>
+                    <input
+                      type="date"
+                      value={payrollCustomStartDate}
+                      onChange={(e) => setPayrollCustomStartDate(e.target.value)}
+                      className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                    />
+                    <span className="text-[10px] font-bold text-gray-500 uppercase">Até:</span>
+                    <input
+                      type="date"
+                      value={payrollCustomEndDate}
+                      onChange={(e) => setPayrollCustomEndDate(e.target.value)}
+                      className="bg-white border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-800 font-medium"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Filtro de Status de Pagamento (Todos / Apenas Entregues / Apenas Pagos) */}
-              <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setPayrollStatusFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollStatusFilter === 'all'
-                      ? 'bg-white text-gray-950 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayrollStatusFilter('delivered')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollStatusFilter === 'delivered'
-                      ? 'bg-white text-blue-900 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                  title="Demandas entregues aguardando pagamento"
-                >
-                  Apenas Entregues
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayrollStatusFilter('paid')}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    payrollStatusFilter === 'paid'
-                      ? 'bg-white text-emerald-900 font-bold shadow-2xs'
-                      : 'text-gray-500 hover:text-gray-900 font-medium'
-                  }`}
-                  title="Demandas já quitadas via PIX"
-                >
-                  Apenas Pagos
-                </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="w-52">
+                  <SearchableSelect
+                    value={payrollFreelancerId}
+                    onChange={setPayrollFreelancerId}
+                    options={filterFreelancerOptions}
+                    placeholder="Prestador"
+                    searchPlaceholder="Filtrar prestador..."
+                    icon={Users}
+                    buttonClassName="py-1.5 bg-white border-gray-200"
+                  />
+                </div>
+
+                {/* Filtro de Status de Pagamento */}
+                <div className="inline-flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setPayrollStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollStatusFilter === 'all'
+                        ? 'bg-white text-gray-950 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayrollStatusFilter('delivered')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollStatusFilter === 'delivered'
+                        ? 'bg-white text-blue-900 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                    title="Demandas entregues aguardando pagamento"
+                  >
+                    Apenas Entregues
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayrollStatusFilter('paid')}
+                    className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      payrollStatusFilter === 'paid'
+                        ? 'bg-white text-emerald-900 font-bold shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-900 font-medium'
+                    }`}
+                    title="Demandas já quitadas via PIX"
+                  >
+                    Apenas Pagos
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Linha 2: Barra de Ações Padronizada (Mesma altura, mesmo peso, ícones e sem quebras feias) */}
+            <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2.5">
               <button
                 onClick={handleCopyWhatsAppSummary}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
                 title="Copiar mensagem formatada para WhatsApp"
               >
-                {copiedWhatsAppMsg ? <Check size={14} /> : <Copy size={14} />}
-                <span>{copiedWhatsAppMsg ? 'Copiado p/ WhatsApp!' : 'Copiar p/ WhatsApp'}</span>
+                {copiedWhatsAppMsg ? <Check size={15} /> : <Copy size={15} />}
+                <span>{copiedWhatsAppMsg ? 'Copiado WhatsApp!' : 'Copiar WhatsApp'}</span>
               </button>
 
               <button
                 onClick={() => handleOpenFreelancerEmailModal()}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
                 title="Enviar relatório e comprovante por e-mail para o prestador"
               >
-                <Mail size={14} className="text-indigo-600" />
+                <Mail size={15} className="text-indigo-600" />
                 <span>Enviar p/ E-mail</span>
               </button>
 
               <button
                 onClick={handleExportPayrollPDF}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
                 title="Exportar PDF de Fechamento (inclui comprovante oficial Asaas se quitado)"
               >
-                <Download size={14} />
+                <Download size={15} />
                 <span>Exportar PDF</span>
               </button>
 
@@ -1982,20 +1989,21 @@ export default function FreelancerManager({
                   onClick={() => {
                     payrollData.paymentReceiptUrls.forEach(url => window.open(url, '_blank'));
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                  className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
                   title="Visualizar Comprovante Oficial emitido pelo Asaas"
                 >
-                  <Receipt size={14} />
+                  <Receipt size={15} />
                   <span>Comprovante Asaas</span>
                 </button>
               )}
 
               <button
                 onClick={handleExportPayrollCSV}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors border border-gray-200 cursor-pointer"
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
                 title="Exportar CSV"
               >
-                <span>CSV</span>
+                <FileSpreadsheet size={15} className="text-gray-600" />
+                <span>Exportar CSV</span>
               </button>
             </div>
           </div>
