@@ -589,19 +589,19 @@ export async function generatePayrollPdf({
       halign: 'left'
     },
     columnStyles: {
-      0: { cellWidth: 44, halign: 'left', fontStyle: 'bold' },
-      1: { cellWidth: 28, halign: 'left' },
-      2: { cellWidth: 22, halign: 'left' },
-      3: { cellWidth: 21, halign: 'center' },
-      4: { cellWidth: 20, halign: 'center' },
-      5: { cellWidth: 14, halign: 'right', fontStyle: 'bold' },
-      6: { cellWidth: 18, halign: 'right', fontStyle: 'bold' },
-      7: { cellWidth: 15, halign: 'center', fontStyle: 'bold' }
+      0: { cellWidth: 40, halign: 'left', fontStyle: 'bold', cellPadding: { top: 2.5, bottom: 2.5, left: 2, right: 2 } },
+      1: { cellWidth: 28, halign: 'left', cellPadding: { top: 2.5, bottom: 2.5, left: 1.5, right: 1.5 } },
+      2: { cellWidth: 28, halign: 'left', fontSize: 7, cellPadding: { top: 2.5, bottom: 2.5, left: 1.5, right: 1.5 } },
+      3: { cellWidth: 15, halign: 'center', cellPadding: { top: 2.5, bottom: 2.5, left: 0.5, right: 0.5 } },
+      4: { cellWidth: 15, halign: 'center', cellPadding: { top: 2.5, bottom: 2.5, left: 0.5, right: 0.5 } },
+      5: { cellWidth: 12, halign: 'right', fontStyle: 'bold', cellPadding: { top: 2.5, bottom: 2.5, left: 0.5, right: 1.5 } },
+      6: { cellWidth: 30, halign: 'right', fontStyle: 'bold', cellPadding: { top: 2.5, bottom: 2.5, left: 1, right: 2 } },
+      7: { cellWidth: 14, halign: 'center', fontStyle: 'bold', cellPadding: { top: 2.5, bottom: 2.5, left: 1, right: 1 } }
     },
     bodyStyles: {
       fontSize: 7.5,
       textColor: [30, 30, 30],
-      cellPadding: 2.8
+      cellPadding: { top: 2.5, bottom: 2.5, left: 1.5, right: 1.5 }
     },
     alternateRowStyles: {
       fillColor: [248, 248, 248]
@@ -611,7 +611,7 @@ export async function generatePayrollPdf({
       textColor: [20, 20, 20],
       fontStyle: 'bold',
       fontSize: 8,
-      cellPadding: 3.2
+      cellPadding: { top: 3, bottom: 3, left: 1, right: 2 }
     },
     didParseCell: function (data) {
       if (data.section === 'foot') {

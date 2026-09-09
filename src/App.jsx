@@ -551,6 +551,42 @@ function App() {
     });
   };
 
+  const handleMergeClients = async (sourceClientId, targetClientId) => {
+    const sourceClient = clients.find(c => c.id === sourceClientId);
+    const targetClient = clients.find(c => c.id === targetClientId);
+    if (!sourceClient || !targetClient) return;
+
+    // 1. Atualizar todas as entradas do Timesheet
+    const nextEntries = entries.map(e => e.clientId === sourceClientId ? { ...e, clientId: targetClientId } : e);
+    setEntries(nextEntries);
+    saveEntries(nextEntries);
+
+    // 2. Atualizar todas as demandas de freelancers
+    const nextTasks = freelancerTasks.map(t => t.clientId === sourceClientId ? { ...t, clientId: targetClientId } : t);
+    saveFreelancerTasks(nextTasks);
+
+    // 3. Remover cliente de origem
+    const nextClients = clients.filter(c => c.id !== sourceClientId);
+    setClients(nextClients);
+    saveClients(nextClients);
+
+    // 4. Sincronizar com Supabase se online
+    if (isOnline) {
+      try {
+        const db = getSupabaseInstance();
+        if (db) {
+          await db.from('entries').update({ client_id: targetClientId }).eq('client_id', sourceClientId);
+          await db.from('freelancer_tasks').update({ client_id: targetClientId }).eq('client_id', sourceClientId);
+        }
+        await deleteClientDb(sourceClientId);
+      } catch (err) {
+        console.warn("Aviso ao sincronizar mesclagem no Supabase:", err);
+      }
+    }
+
+    alert(`Cliente "${sourceClient.name}" mesclado com sucesso em "${targetClient.name}"!`);
+  };
+
   // Time Entry Management Handlers
   const handleAddEntry = async (entryData) => {
     if (isOnline) {
@@ -1168,6 +1204,8 @@ function App() {
               clients={clients} 
               onNavigateToTab={(tab) => setActiveTab(tab)} 
               onUpdateClient={handleUpdateClient}
+              onDeleteClient={handleDeleteClient}
+              onMergeClients={handleMergeClients}
             />
           )}
           
@@ -1177,6 +1215,7 @@ function App() {
               onAddClient={handleAddClient}
               onUpdateClient={handleUpdateClient}
               onDeleteClient={handleDeleteClient}
+              onMergeClients={handleMergeClients}
               onSyncClients={async (syncedList) => {
                 if (!isOnline) {
                   setClients(syncedList);

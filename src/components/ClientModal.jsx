@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, Globe } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Search, Globe, Trash2, ArrowRightLeft, AlertTriangle } from 'lucide-react';
 import { fetchAsaasCustomerByCnpj } from '../utils/asaasIntegration';
 import { formatCpfCnpj, formatPhone, fetchPublicCnpjData } from '../utils/cnpjLookup';
 
-export default function ClientModal({ isOpen, onClose, client, onSave }) {
+export default function ClientModal({ isOpen, onClose, client, onSave, clients = [], onDelete, onMerge }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [additionalEmail, setAdditionalEmail] = useState('');
@@ -18,6 +18,11 @@ export default function ClientModal({ isOpen, onClose, client, onSave }) {
   const [retainIss, setRetainIss] = useState(false);
   const [isImportingCnpj, setIsImportingCnpj] = useState(false);
   const [isConsultingPublicCnpj, setIsConsultingPublicCnpj] = useState(false);
+
+  // Estados de Mesclagem
+  const [isMergeOpen, setIsMergeOpen] = useState(false);
+  const [mergeSearchTerm, setMergeSearchTerm] = useState('');
+  const [targetMergeClientId, setTargetMergeClientId] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -68,6 +73,18 @@ export default function ClientModal({ isOpen, onClose, client, onSave }) {
       setHoursIncluded('0');
     }
   }, [fixedFee, hourlyRate, contractType]);
+
+  const availableMergeClients = useMemo(() => {
+    if (!client || !client.id) return [];
+    return clients.filter(c => {
+      if (c.id === client.id) return false;
+      if (!mergeSearchTerm.trim()) return true;
+      const term = mergeSearchTerm.toLowerCase();
+      const matchName = (c.name || '').toLowerCase().includes(term);
+      const matchCnpj = (c.cnpj || '').replace(/\D/g, '').includes(term.replace(/\D/g, ''));
+      return matchName || matchCnpj;
+    });
+  }, [clients, client, mergeSearchTerm]);
 
   if (!isOpen) return null;
 
@@ -403,6 +420,104 @@ export default function ClientModal({ isOpen, onClose, client, onSave }) {
               </div>
             )}
           </div>
+
+          {/* Zona de Ações Avançadas: Excluir ou Mesclar */}
+          {client && client.id && (
+            <div className="border-t border-gray-150 pt-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Gerenciamento da Conta
+                </span>
+                <div className="flex items-center gap-2">
+                  {onMerge && (
+                    <button
+                      type="button"
+                      onClick={() => setIsMergeOpen(!isMergeOpen)}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <ArrowRightLeft size={13} />
+                      <span>{isMergeOpen ? 'Fechar Mesclagem' : 'Mesclar com Outro Cliente'}</span>
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Deseja realmente excluir o cliente "${client.name}"? Todos os lançamentos e demandas associados serão excluídos permanentemente.`)) {
+                          onDelete(client.id);
+                          onClose();
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Trash2 size={13} />
+                      <span>Excluir</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bloco de Mesclagem de Clientes com busca */}
+              {isMergeOpen && (
+                <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 flex flex-col gap-2.5 animate-in fade-in-0">
+                  <div className="flex items-start gap-2 text-xs text-amber-950">
+                    <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block">Mesclar "{client.name}" com outro cliente</strong>
+                      <span className="text-[11px] text-amber-800 leading-relaxed">
+                        Todas as horas do Timesheet e demandas de prestadores vinculadas a este cliente serão transferidas para o cliente selecionado abaixo. O cadastro de <strong>{client.name}</strong> será removido.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] font-bold text-gray-700">Selecione o Cliente de Destino:</label>
+                    <div className="relative">
+                      <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar cliente por nome ou CNPJ..."
+                        value={mergeSearchTerm}
+                        onChange={(e) => setMergeSearchTerm(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg pl-8 pr-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <select
+                      value={targetMergeClientId}
+                      onChange={(e) => setTargetMergeClientId(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white font-semibold text-gray-800 focus:outline-none focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="">Selecione um cliente para mesclar ({availableMergeClients.length} disponíveis)...</option>
+                      {availableMergeClients.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.cnpj ? `(${formatCpfCnpj(c.cnpj)})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      disabled={!targetMergeClientId}
+                      onClick={() => {
+                        if (!targetMergeClientId) return;
+                        const targetObj = clients.find(c => c.id === targetMergeClientId);
+                        if (confirm(`Confirma a mesclagem? Todas as horas e demandas de "${client.name}" serão migradas para "${targetObj?.name}". Esta ação não pode ser desfeita.`)) {
+                          onMerge(client.id, targetMergeClientId);
+                          onClose();
+                        }
+                      }}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <ArrowRightLeft size={13} />
+                      <span>Confirmar e Mesclar</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 mt-2">
             <button 

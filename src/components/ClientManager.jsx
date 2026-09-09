@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit3, Trash2, Mail, Clock, DollarSign, X, Search, Phone, Building, MapPin, RefreshCw, CheckCircle2, AlertCircle, Globe, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { fetchAsaasCustomerByCnpj, syncAllAsaasClients } from '../utils/asaasIntegration';
 import { formatCpfCnpj, formatPhone, fetchPublicCnpjData } from '../utils/cnpjLookup';
+import ClientModal from './ClientModal';
 
-export default function ClientManager({ clients, onAddClient, onUpdateClient, onDeleteClient, onSyncClients }) {
+export default function ClientManager({ clients, onAddClient, onUpdateClient, onDeleteClient, onSyncClients, onMergeClients }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [isSyncingAsaas, setIsSyncingAsaas] = useState(false);
@@ -730,255 +731,22 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
         </div>
       )}
 
-      {/* Add/Edit Modal */}
-      <dialog ref={dialogRef} onClose={handleCloseModal} className="bg-white p-6 rounded-xl border border-gray-200 max-w-[520px] w-full shadow-xl">
-        <div className="flex justify-between items-center border-b border-gray-100 pb-3 mb-4">
-          <h3 className="font-title text-base font-bold text-gray-900">
-            {editingClient ? 'Editar Cliente' : 'Adicionar Novo Cliente'}
-          </h3>
-          <button className="text-gray-400 hover:text-gray-900 cursor-pointer" onClick={handleCloseModal}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          
-          {/* Asaas CNPJ Importer */}
-          <div className="flex flex-col gap-1.5 bg-gray-50 border border-gray-150 p-3 rounded-lg">
-            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Importar dados do Asaas por CNPJ</span>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                placeholder="CNPJ (apenas números ou formatado)"
-                className="flex-grow border border-gray-200 rounded-lg p-2 text-xs focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono"
-                value={cnpj} 
-                onChange={(e) => setCnpj(formatCpfCnpj(e.target.value))}
-              />
-              <button 
-                type="button"
-                onClick={handleImportAsaasByCnpj}
-                className="bg-gray-900 hover:bg-black text-white rounded-lg px-3 py-2 text-xs font-bold cursor-pointer shrink-0 disabled:opacity-55 flex items-center gap-1 transition-colors"
-                disabled={isImportingCnpj}
-              >
-                <Search size={12} /> {isImportingCnpj ? 'Buscando...' : 'Buscar'}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-700" htmlFor="client-name">Nome da Empresa / Cliente</label>
-            <input 
-              id="client-name" 
-              type="text" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-              value={name} 
-              onChange={(e) => setName(e.target.value)} 
-              placeholder="Ex: CPR (MHB Raffa)"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-gray-700" htmlFor="client-cnpj-input">CNPJ / CPF do Cliente</label>
-                <button
-                  type="button"
-                  onClick={handleConsultPublicCnpj}
-                  disabled={isConsultingPublicCnpj}
-                  className="text-[10px] text-gray-700 hover:text-gray-950 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 underline"
-                  title="Consultar dados da empresa na Receita Federal via API pública gratuita"
-                >
-                  <Globe size={11} />
-                  <span>{isConsultingPublicCnpj ? 'Consultando...' : 'Buscar na Receita'}</span>
-                </button>
-              </div>
-              <input 
-                id="client-cnpj-input" 
-                type="text" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono" 
-                value={cnpj} 
-                onChange={(e) => setCnpj(formatCpfCnpj(e.target.value))} 
-                placeholder="00.000.000/0000-00"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-700" htmlFor="client-phone-input">Telefone / WhatsApp</label>
-              <input 
-                id="client-phone-input" 
-                type="text" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white font-mono" 
-                value={phone} 
-                onChange={(e) => setPhone(formatPhone(e.target.value))} 
-                placeholder="(19) 99999-9999"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-700" htmlFor="client-address-input">Endereço Completo</label>
-            <input 
-              id="client-address-input" 
-              type="text" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-              value={address} 
-              onChange={(e) => setAddress(e.target.value)} 
-              placeholder="Av. Exemplo, 100 - Bairro, Cidade/UF - CEP: 13000-000"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-700" htmlFor="client-email">E-mail Financeiro Principal</label>
-              <input 
-                id="client-email" 
-                type="email" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                placeholder="financeiro@empresa.com.br"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-700" htmlFor="client-additional-email">E-mail Adicional (Opcional - Cópia)</label>
-              <input 
-                id="client-additional-email" 
-                type="email" 
-                className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-                value={additionalEmail} 
-                onChange={(e) => setAdditionalEmail(e.target.value)} 
-                placeholder="diretoria@empresa.com.br"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <input 
-              id="client-is-active"
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="w-4 h-4 text-gray-900 rounded border-gray-300 focus:ring-gray-900 cursor-pointer"
-            />
-            <label htmlFor="client-is-active" className="text-xs font-semibold text-gray-700 cursor-pointer">
-              Cliente Ativo (com contrato ou demandas correntes)
-            </label>
-          </div>
-
-          <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5 cursor-pointer">
-                <span>Retenção de ISS (Emissão NFS-e no Asaas)</span>
-              </label>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${retainIss ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-gray-100 text-gray-700'}`}>
-                {retainIss ? 'Tomador retém o ISS' : 'ISS por conta do prestador'}
-              </span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <input 
-                id="client-retain-iss"
-                type="checkbox"
-                checked={retainIss}
-                onChange={(e) => setRetainIss(e.target.checked)}
-                className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
-              />
-              <label htmlFor="client-retain-iss" className="text-xs text-gray-700 cursor-pointer">
-                Este cliente retém o ISS na fonte (Tomador do ISS, como o <strong>Colégio Pedro e Rafael</strong>).
-              </label>
-            </div>
-            <p className="text-[11px] text-gray-500">
-              {retainIss 
-                ? 'ℹ️ Ao gerar faturas para este cliente no Asaas, a NFS-e será programada com retenção de ISS pelo tomador.' 
-                : 'ℹ️ Padrão: O imposto ISS é recolhido pelo prestador (sem retenção de ISS pelo cliente).'}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-700" htmlFor="client-contract">Modelo de Contrato</label>
-            <select 
-              id="client-contract" 
-              className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 bg-white cursor-pointer" 
-              value={contractType} 
-              onChange={(e) => setContractType(e.target.value)}
-            >
-              <option value="fixed">Fee Fixo (Valor Fechado Mensal)</option>
-              <option value="hourly">Faturamento por Hora (Sem Franquia)</option>
-              <option value="hybrid">Misto (Fee Fixo + Cobrança de Hora Extra)</option>
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {contractType !== 'hourly' && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-700" htmlFor="client-fixed-fee">Valor Mensal Fixo (R$)</label>
-                <input 
-                  id="client-fixed-fee" 
-                  type="number" 
-                  step="0.01" 
-                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-                  value={fixedFee} 
-                  onChange={(e) => setFixedFee(e.target.value)} 
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-            )}
-
-            {contractType !== 'fixed' && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-700" htmlFor="client-rate">
-                  {contractType === 'hybrid' ? 'Tarifa Hora Extra (R$)' : 'Tarifa por Hora (R$)'}
-                </label>
-                <input 
-                  id="client-rate" 
-                  type="number" 
-                  step="0.01" 
-                  className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 bg-white" 
-                  value={hourlyRate} 
-                  onChange={(e) => setHourlyRate(e.target.value)} 
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-            )}
-
-            {contractType !== 'hourly' && (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-700" htmlFor="client-hours">
-                  Horas Inclusas (Calculado)
-                </label>
-                <input 
-                  id="client-hours" 
-                  type="text" 
-                  readOnly 
-                  className="border border-gray-200 bg-gray-50 rounded-lg p-2.5 text-sm text-gray-600 font-semibold focus:outline-none" 
-                  value={`${hoursIncluded}h`} 
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 mt-2">
-            <button 
-              type="button" 
-              className="px-4 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" 
-              onClick={handleCloseModal}
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit" 
-              className="px-4 py-2 bg-yellow-400 text-gray-950 rounded-lg text-xs font-bold hover:bg-yellow-500 shadow-xs cursor-pointer"
-            >
-              {editingClient ? 'Salvar Alterações' : 'Adicionar Cliente'}
-            </button>
-          </div>
-
-        </form>
-      </dialog>
+      {/* Modal Reutilizável de Adição, Edição, Exclusão e Mesclagem de Clientes */}
+      <ClientModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        client={editingClient}
+        clients={clients}
+        onSave={(clientData) => {
+          if (editingClient) {
+            onUpdateClient({ ...editingClient, ...clientData });
+          } else {
+            onAddClient(clientData);
+          }
+        }}
+        onDelete={onDeleteClient}
+        onMerge={onMergeClients}
+      />
 
     </div>
   );

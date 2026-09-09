@@ -257,8 +257,14 @@ export default function LoginScreen({ onLogin, companyInfo, freelancers = [] }) 
 
       {/* Modal de Configuração do Supabase (Modo Claro) */}
       {showDbConfigModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 text-gray-800">
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowDbConfigModal(false)}
+        >
+          <div 
+            className="bg-white border border-gray-200 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 text-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <Server size={18} className="text-yellow-600" />

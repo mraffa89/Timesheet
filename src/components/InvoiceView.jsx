@@ -586,7 +586,7 @@ Atenciosamente,
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[880px] mx-auto w-full">
+    <div className="flex flex-col gap-6 w-full">
       
       {/* Page Header */}
       <div className="no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -704,7 +704,7 @@ Atenciosamente,
         <div className="print-container w-full">
           <div 
             id="invoice-screen-card" 
-            className="print-card bg-white border border-gray-150 rounded-2xl shadow-xs text-gray-800 max-w-[880px] mx-auto font-sans leading-relaxed"
+            className="print-card bg-white border border-gray-150 rounded-2xl shadow-xs text-gray-800 w-full font-sans leading-relaxed"
           >
             
             {/* ═══════ SEÇÃO 1: HEADER (Dados da Empresa + Metadados do Documento) ═══════ */}
@@ -1009,8 +1009,14 @@ Atenciosamente,
 
       {/* Modal de Envio por E-mail */}
       {isEmailModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full flex flex-col gap-4 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setIsEmailModalOpen(false)}
+        >
+          <div 
+            className="bg-white border border-gray-200 rounded-2xl p-6 shadow-2xl max-w-xl w-full flex flex-col gap-4 animate-in fade-in-0 zoom-in-95 my-8 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
                 <Mail size={18} className="text-indigo-600" />

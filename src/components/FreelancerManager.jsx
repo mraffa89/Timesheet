@@ -968,31 +968,63 @@ export default function FreelancerManager({
       // 1. Gera e faz o download do PDF executivo de fechamento
       await handleExportPayrollPDF();
 
-      // 2. Monta a URL de e-mail com Para, CC (cópia pro meu e-mail de cadastro), Assunto e Mensagem
-      const to = encodeURIComponent(freelancerEmailTo.trim());
-      const cc = freelancerEmailCc.trim() ? encodeURIComponent(freelancerEmailCc.trim()) : '';
-      const subj = encodeURIComponent(freelancerEmailSubject);
-      const body = encodeURIComponent(freelancerEmailBody);
+      // 2. Monta a URL mailto conforme RFC 6068 (não codificar @ no destinatário)
+      const to = freelancerEmailTo.trim();
+      const cc = freelancerEmailCc.trim();
+      const subj = freelancerEmailSubject;
+      const body = freelancerEmailBody;
 
-      let mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
-      if (cc) {
-        mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
+      const params = [];
+      if (cc) params.push(`cc=${encodeURIComponent(cc)}`);
+      if (subj) params.push(`subject=${encodeURIComponent(subj)}`);
+      if (body) {
+        // Limita comprimento do body na URL mailto para prevenir bloqueio em clientes de desktop
+        const safeBody = body.length > 1500 ? body.substring(0, 1500) + '\n\n[Mensagem completa disponível no PDF anexo]' : body;
+        params.push(`body=${encodeURIComponent(safeBody)}`);
       }
 
-      // 3. Disparo seguro via elemento <a> invisível (previne tela em branco do browser)
+      const queryString = params.length > 0 ? `?${params.join('&')}` : '';
+      const mailtoUrl = `mailto:${to}${queryString}`;
+
+      // 3. Disparo seguro via <a> no mesmo frame (previne about:blank no Chrome/Safari)
       const link = document.createElement('a');
       link.href = mailtoUrl;
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
       setTimeout(() => {
-        document.body.removeChild(link);
+        if (link.parentNode) link.parentNode.removeChild(link);
       }, 500);
 
       // 4. Feedback visual de sucesso
       setFreelancerEmailSuccess(true);
     } catch (err) {
       alert('Erro ao processar fechamento e e-mail: ' + err.message);
+    } finally {
+      setIsSendingFreelancerEmail(false);
+    }
+  };
+
+  const handleLaunchGmailWeb = async () => {
+    if (!freelancerEmailTo.trim()) {
+      alert('Por favor, informe o e-mail do destinatário.');
+      return;
+    }
+
+    try {
+      setIsSendingFreelancerEmail(true);
+      await handleExportPayrollPDF();
+
+      const to = encodeURIComponent(freelancerEmailTo.trim());
+      const cc = freelancerEmailCc.trim() ? encodeURIComponent(freelancerEmailCc.trim()) : '';
+      const subj = encodeURIComponent(freelancerEmailSubject);
+      const body = encodeURIComponent(freelancerEmailBody);
+
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=${body}`;
+      window.open(gmailUrl, '_blank');
+      setFreelancerEmailSuccess(true);
+    } catch (err) {
+      alert('Erro ao abrir Gmail: ' + err.message);
     } finally {
       setIsSendingFreelancerEmail(false);
     }
@@ -1195,22 +1227,6 @@ export default function FreelancerManager({
       });
 
       doc.save(`Fechamento_${safeName}_${safePeriod}.pdf`);
-
-      // Se houver comprovante oficial emitido pelo Asaas, exporta/abre junto automaticamente
-      if (payrollData.paymentReceiptUrls && payrollData.paymentReceiptUrls.length > 0) {
-        payrollData.paymentReceiptUrls.forEach(url => {
-          if (url) window.open(url, '_blank');
-        });
-      } else if (payrollData.paymentIds && payrollData.paymentIds.length > 0) {
-        for (const pid of payrollData.paymentIds) {
-          try {
-            const transferInfo = await fetchAsaasTransferReceipt(pid);
-            if (transferInfo?.transactionReceiptUrl) {
-              window.open(transferInfo.transactionReceiptUrl, '_blank');
-            }
-          } catch (e) {}
-        }
-      }
     } catch (err) {
       alert('Erro ao gerar PDF: ' + err.message);
     }
@@ -1996,11 +2012,19 @@ export default function FreelancerManager({
             </div>
 
             {/* Linha 2: Barra de Ações Padronizada (Mesma altura, mesmo peso, ícones e sem quebras feias) */}
-            <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2.5">
+            {/* Linha 2: Barra de Ações Padronizada (Alinhada à direita, habilitada apenas ao selecionar um prestador específico) */}
+            <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-end gap-2.5">
+              {payrollFreelancerId === 'all' && (
+                <span className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl mr-auto font-medium">
+                  Selecione um prestador específico para habilitar as ações de fechamento.
+                </span>
+              )}
+
               <button
                 onClick={handleCopyWhatsAppSummary}
-                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
-                title="Copiar mensagem formatada para WhatsApp"
+                disabled={payrollFreelancerId === 'all'}
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
+                title={payrollFreelancerId === 'all' ? "Selecione um prestador específico para habilitar" : "Copiar mensagem formatada para WhatsApp"}
               >
                 {copiedWhatsAppMsg ? <Check size={15} /> : <Copy size={15} />}
                 <span>{copiedWhatsAppMsg ? 'Copiado WhatsApp!' : 'Copiar WhatsApp'}</span>
@@ -2008,8 +2032,9 @@ export default function FreelancerManager({
 
               <button
                 onClick={() => handleOpenFreelancerEmailModal()}
-                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
-                title="Enviar relatório e comprovante por e-mail para o prestador"
+                disabled={payrollFreelancerId === 'all'}
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 disabled:hover:bg-indigo-50 disabled:cursor-not-allowed text-indigo-900 border border-indigo-200 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
+                title={payrollFreelancerId === 'all' ? "Selecione um prestador específico para habilitar" : "Enviar relatório e comprovante por e-mail para o prestador"}
               >
                 <Mail size={15} className="text-indigo-600" />
                 <span>Enviar p/ E-mail</span>
@@ -2017,8 +2042,9 @@ export default function FreelancerManager({
 
               <button
                 onClick={handleExportPayrollPDF}
-                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
-                title="Exportar PDF de Fechamento (inclui comprovante oficial Asaas se quitado)"
+                disabled={payrollFreelancerId === 'all'}
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:hover:bg-gray-900 disabled:cursor-not-allowed text-white rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap border border-transparent"
+                title={payrollFreelancerId === 'all' ? "Selecione um prestador específico para habilitar" : "Exportar PDF de Fechamento"}
               >
                 <Download size={15} />
                 <span>Exportar PDF</span>
@@ -2029,8 +2055,9 @@ export default function FreelancerManager({
                   onClick={() => {
                     payrollData.paymentReceiptUrls.forEach(url => window.open(url, '_blank'));
                   }}
-                  className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
-                  title="Visualizar Comprovante Oficial emitido pelo Asaas"
+                  disabled={payrollFreelancerId === 'all'}
+                  className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 disabled:hover:bg-emerald-50 disabled:cursor-not-allowed text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
+                  title={payrollFreelancerId === 'all' ? "Selecione um prestador específico para habilitar" : "Visualizar Comprovante Oficial emitido pelo Asaas"}
                 >
                   <Receipt size={15} />
                   <span>Comprovante Asaas</span>
@@ -2039,8 +2066,9 @@ export default function FreelancerManager({
 
               <button
                 onClick={handleExportPayrollCSV}
-                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
-                title="Exportar CSV"
+                disabled={payrollFreelancerId === 'all'}
+                className="h-10 px-4 flex-1 sm:flex-initial min-w-[145px] bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:hover:bg-gray-100 disabled:cursor-not-allowed text-gray-800 border border-gray-300 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer inline-flex items-center justify-center gap-2 whitespace-nowrap"
+                title={payrollFreelancerId === 'all' ? "Selecione um prestador específico para habilitar" : "Exportar CSV"}
               >
                 <FileSpreadsheet size={15} className="text-gray-600" />
                 <span>Exportar CSV</span>
@@ -2246,8 +2274,14 @@ export default function FreelancerManager({
       {/* MODAL: CRIAR / EDITAR DEMANDA                                         */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {isTaskModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsTaskModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <h3 className="text-sm font-bold text-gray-950 flex items-center gap-2">
                 <Briefcase size={16} className="text-yellow-600" />
@@ -2432,8 +2466,14 @@ export default function FreelancerManager({
       {/* MODAL: CADASTRAR / EDITAR PRESTADOR                                   */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {isFreelancerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsFreelancerModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <h3 className="text-sm font-bold text-gray-950 flex items-center gap-2">
                 <Users size={16} className="text-yellow-600" />
@@ -2604,8 +2644,14 @@ export default function FreelancerManager({
       {/* MODAL 1: EDIÇÃO EM LOTE DE DEMANDAS                                   */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsBatchModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-yellow-50 text-yellow-700 rounded-xl border border-yellow-200">
@@ -2725,8 +2771,14 @@ export default function FreelancerManager({
       {/* MODAL 2: CONFIRMAÇÃO DE PAGAMENTO PIX VIA ASAAS                       */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {isPixPaymentModalOpen && selectedTasksFreelancer && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => !isSubmittingPix && setIsPixPaymentModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
@@ -2844,8 +2896,14 @@ export default function FreelancerManager({
       {/* MODAL 3: SUCESSO PIX & DISPARO DE COMPROVANTE VIA WHATSAPP            */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {pixSuccessData && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95 text-center">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPixSuccessData(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="w-14 h-14 mx-auto mb-3 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-200">
               <CheckCircle2 size={32} />
             </div>
@@ -2920,8 +2978,14 @@ export default function FreelancerManager({
       {/* MODAL 4: DETALHES DO COMPROVANTE DIGITAL (DEMANDA PAGA)               */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {viewingReceiptTask && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setViewingReceiptTask(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in-0 zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100 mb-4">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
@@ -3005,8 +3069,14 @@ export default function FreelancerManager({
       {/* MODAL 5: ENVIAR COMPROVANTE & FECHAMENTO POR E-MAIL AO PRESTADOR    */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {isFreelancerEmailModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsFreelancerEmailModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200">
@@ -3127,30 +3197,42 @@ export default function FreelancerManager({
                     <span>{copiedFreelancerEmailBody ? 'Copiado!' : 'Copiar Mensagem'}</span>
                   </button>
 
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setIsFreelancerEmailModalOpen(false)}
-                      className="px-4 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                      className="px-3 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
                     >
                       Cancelar
                     </button>
 
                     <button
                       type="button"
+                      onClick={handleLaunchGmailWeb}
+                      disabled={isSendingFreelancerEmail}
+                      className="px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl text-xs transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                      title="Abrir diretamente na versão Web do Gmail"
+                    >
+                      <Mail size={14} className="text-red-600" />
+                      <span>Abrir no Gmail</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleLaunchFreelancerEmailClient}
                       disabled={isSendingFreelancerEmail}
-                      className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                      title="Abrir no aplicativo padrão de e-mail do sistema"
                     >
                       {isSendingFreelancerEmail ? (
                         <>
                           <RefreshCw size={14} className="animate-spin" />
-                          <span>Preparando & Enviando...</span>
+                          <span>Preparando...</span>
                         </>
                       ) : (
                         <>
                           <Send size={14} />
-                          <span>Enviar E-mail</span>
+                          <span>Abrir App E-mail</span>
                         </>
                       )}
                     </button>

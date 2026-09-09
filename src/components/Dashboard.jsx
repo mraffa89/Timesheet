@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import ClientModal from './ClientModal';
 
-export default function Dashboard({ entries = [], clients = [], onNavigateToTab, onUpdateClient }) {
+export default function Dashboard({ entries = [], clients = [], onNavigateToTab, onUpdateClient, onDeleteClient, onMergeClients }) {
   // 1. Filtro de Período exclusivo ('current_month', 'prev_month', 'select_month')
   const [periodFilter, setPeriodFilter] = useState('current_month');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -1229,9 +1229,20 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
           setSelectedClientForEdit(null);
         }}
         client={selectedClientForEdit}
+        clients={clients}
         onSave={(updatedData) => {
           if (onUpdateClient) {
             onUpdateClient(updatedData);
+          }
+        }}
+        onDelete={(clientId) => {
+          if (onDeleteClient) {
+            onDeleteClient(clientId);
+          }
+        }}
+        onMerge={(sourceId, targetId) => {
+          if (onMergeClients) {
+            onMergeClients(sourceId, targetId);
           }
         }}
       />

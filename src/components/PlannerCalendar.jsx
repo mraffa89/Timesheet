@@ -588,8 +588,15 @@ export default function PlannerCalendar({ entries, clients, onAddEntry, onUpdate
 
       {/* Add / Edit Task Modal */}
       {isModalOpen && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4">
-          <form onSubmit={handleSaveEntry} className="bg-white border border-gray-150 rounded-xl p-6 shadow-lg max-w-md w-full flex flex-col gap-4">
+        <div 
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <form 
+            onSubmit={handleSaveEntry} 
+            className="bg-white border border-gray-150 rounded-xl p-6 shadow-lg max-w-md w-full flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-1.5">
