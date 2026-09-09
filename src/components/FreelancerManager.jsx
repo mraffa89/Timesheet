@@ -245,6 +245,8 @@ export default function FreelancerManager({
   entries = [],
   companyInfo = {},
   categories = [],
+  freelancerEmailSubjectTemplate,
+  freelancerEmailBodyTemplate,
   onAddCategory,
   onAddFreelancer,
   onUpdateFreelancer,
@@ -325,6 +327,13 @@ export default function FreelancerManager({
   const [editingFreelancer, setEditingFreelancer] = useState(null);
 
   const [copiedWhatsAppMsg, setCopiedWhatsAppMsg] = useState(false);
+
+  // Email modal state
+  const [isFreelancerEmailModalOpen, setIsFreelancerEmailModalOpen] = useState(false);
+  const [freelancerEmailTo, setFreelancerEmailTo] = useState('');
+  const [freelancerEmailSubject, setFreelancerEmailSubject] = useState('');
+  const [freelancerEmailBody, setFreelancerEmailBody] = useState('');
+  const [copiedFreelancerEmailBody, setCopiedFreelancerEmailBody] = useState(false);
 
   // Form states - Task
   const [taskForm, setTaskForm] = useState({
@@ -635,7 +644,7 @@ export default function FreelancerManager({
   const payrollData = useMemo(() => {
     const { start, end } = payrollDateRange;
     const monthTasks = tasks.filter(t => {
-      const date = t.actualDeliveryDate || t.requestDate || '';
+      const date = t.actualDeliveryDate || t.requestDate || (t.paymentDate ? t.paymentDate.split('T')[0] : '') || '';
       if (date < start || date > end) return false;
       if (payrollFreelancerId !== 'all' && t.freelancerId !== payrollFreelancerId) return false;
       return true;
@@ -866,6 +875,92 @@ export default function FreelancerManager({
     } else {
       alert('Relatório copiado para a área de transferência! (O prestador não possui telefone com WhatsApp cadastrado)');
     }
+  };
+
+  const handleOpenFreelancerEmailModal = (customPayload = null) => {
+    let freela = null;
+    let targetTasks = [];
+    let totalHours = 0;
+    let totalAmount = 0;
+    let paymentId = '';
+    let paymentDate = '';
+
+    if (customPayload) {
+      freela = customPayload.freelancer;
+      targetTasks = customPayload.tasks || [];
+      totalHours = customPayload.totalHours || 0;
+      totalAmount = customPayload.totalAmount || 0;
+      paymentId = customPayload.transfer?.id || '';
+      paymentDate = customPayload.date || '';
+    } else {
+      if (payrollData.deliveredMonthTasks.length === 0) {
+        alert('Não há demandas entregues ou pagas no período selecionado.');
+        return;
+      }
+      freela = getFreelancer(payrollFreelancerId);
+      targetTasks = payrollData.deliveredMonthTasks;
+      totalHours = payrollData.totalHours;
+      totalAmount = payrollData.totalAmountToPay;
+      paymentId = payrollData.paymentIds.join(', ') || '';
+      paymentDate = payrollData.paymentDates[0] || '';
+    }
+
+    const recipientEmail = freela?.email || (freela?.username && freela.username.includes('@') ? freela.username : '') || '';
+    setFreelancerEmailTo(recipientEmail);
+
+    const rawSubj = freelancerEmailSubjectTemplate || 'Comprovante de Pagamento PIX - Fechamento de Demandas - {nome_freelancer}';
+    const rawBody = freelancerEmailBodyTemplate || `Olá, {nome_freelancer}!\n\nInformamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!\n\n📋 RESUMO DO FECHAMENTO:\n• Período de Referência: {periodo_referencia}\n• Quantidade de Demandas: {quantidade_demandas}\n• Total de Horas Realizadas: {total_horas}h\n• Valor Total Quitado: {valor_total}\n• Favorecido: {nome_freelancer}\n• Chave PIX: {chave_pix}\n• ID da Transação Asaas: {id_transacao_pix}\n• Data da Quitação: {data_pagamento}\n\nDEMANDAS QUITADAS:\n{lista_demandas}\n\nO relatório completo e detalhado com todas as atividades executadas segue em anexo em formato PDF.\n\nAtenciosamente,\n{minha_empresa}\n{meu_telefone} | {meu_email}`;
+
+    const demandListStr = targetTasks.map((t, idx) => {
+      const cName = getClientName(t.clientId);
+      return `${idx + 1}. ${t.title} (${cName}) - ${parseFloat(t.hours).toFixed(1)}h`;
+    }).join('\n');
+
+    const replacements = {
+      '{nome_freelancer}': freela?.name || 'Prestador',
+      '{periodo_referencia}': payrollPeriodLabel || 'Período Atual',
+      '{quantidade_demandas}': String(targetTasks.length),
+      '{total_horas}': totalHours.toFixed(1).replace('.', ','),
+      '{valor_total}': formatCurrency(totalAmount),
+      '{chave_pix}': freela?.pixKey || '-',
+      '{id_transacao_pix}': paymentId || 'PIX Asaas',
+      '{data_pagamento}': paymentDate ? formatDateBR(paymentDate) : formatDateBR(new Date().toISOString().split('T')[0]),
+      '{lista_demandas}': demandListStr,
+      '{minha_empresa}': companyInfo?.brandName || companyInfo?.legalName || 'MHB Raffa',
+      '{meu_telefone}': companyInfo?.phone || '',
+      '{meu_email}': companyInfo?.email || ''
+    };
+
+    let processedSubj = rawSubj;
+    let processedBody = rawBody;
+
+    Object.entries(replacements).forEach(([key, val]) => {
+      processedSubj = processedSubj.split(key).join(val || '');
+      processedBody = processedBody.split(key).join(val || '');
+    });
+
+    setFreelancerEmailSubject(processedSubj);
+    setFreelancerEmailBody(processedBody);
+    setIsFreelancerEmailModalOpen(true);
+  };
+
+  const handleLaunchFreelancerEmailClient = async () => {
+    // 1. Gera e faz o download do PDF executivo de fechamento
+    await handleExportPayrollPDF();
+
+    // 2. Abre o leitor de e-mail do sistema com Destinatário, Assunto e Mensagem
+    const to = encodeURIComponent(freelancerEmailTo);
+    const subj = encodeURIComponent(freelancerEmailSubject);
+    const body = encodeURIComponent(freelancerEmailBody);
+
+    const mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
+    window.open(mailtoUrl, '_self');
+  };
+
+  const handleCopyFreelancerEmailText = () => {
+    navigator.clipboard.writeText(`Para: ${freelancerEmailTo}\nAssunto: ${freelancerEmailSubject}\n\n${freelancerEmailBody}`);
+    setCopiedFreelancerEmailBody(true);
+    setTimeout(() => setCopiedFreelancerEmailBody(false), 2500);
   };
 
   // Handlers de Tarefas
@@ -1865,6 +1960,15 @@ export default function FreelancerManager({
               </button>
 
               <button
+                onClick={() => handleOpenFreelancerEmailModal()}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                title="Enviar relatório e comprovante por e-mail para o prestador"
+              >
+                <Mail size={14} className="text-indigo-600" />
+                <span>Enviar p/ E-mail</span>
+              </button>
+
+              <button
                 onClick={handleExportPayrollPDF}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer"
                 title="Exportar PDF de Fechamento (inclui comprovante oficial Asaas se quitado)"
@@ -2737,10 +2841,19 @@ export default function FreelancerManager({
               <button
                 type="button"
                 onClick={() => handleSendWhatsAppReceipt(pixSuccessData)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
               >
                 <Send size={14} />
-                <span>Enviar Comprovante WhatsApp</span>
+                <span>WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenFreelancerEmailModal(pixSuccessData)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+              >
+                <Mail size={14} />
+                <span>Enviar E-mail</span>
               </button>
 
               <button
@@ -2833,6 +2946,103 @@ export default function FreelancerManager({
                   className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl cursor-pointer"
                 >
                   Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL 5: ENVIAR COMPROVANTE & FECHAMENTO POR E-MAIL AO PRESTADOR    */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {isFreelancerEmailModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200">
+                  <Mail size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-950">Enviar Fechamento & Comprovante por E-mail</h3>
+                  <p className="text-xs text-gray-500">Revise os dados antes de disparar a mensagem para o prestador.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsFreelancerEmailModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700">E-mail do Prestador (Destinatário):</label>
+                <input 
+                  type="email"
+                  value={freelancerEmailTo}
+                  onChange={(e) => setFreelancerEmailTo(e.target.value)}
+                  placeholder="ex: prestador@gmail.com"
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700">Assunto do E-mail:</label>
+                <input 
+                  type="text"
+                  value={freelancerEmailSubject}
+                  onChange={(e) => setFreelancerEmailSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700">Mensagem (Corpo do E-mail):</label>
+                <textarea 
+                  rows={9}
+                  value={freelancerEmailBody}
+                  onChange={(e) => setFreelancerEmailBody(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono leading-relaxed text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                />
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-[11px] text-indigo-950 flex items-start gap-2">
+                <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Anexo em PDF Automático:</strong> Ao clicar em <strong>"Baixar PDF & Abrir no E-mail"</strong>, o relatório executivo em PDF é salvo automaticamente em seus downloads e o seu aplicativo de e-mail abre pronto com Destinatário, Assunto e Mensagem preenchidos para envio imediato.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={handleCopyFreelancerEmailText}
+                className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {copiedFreelancerEmailBody ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copiedFreelancerEmailBody ? 'Copiado!' : 'Copiar Mensagem'}</span>
+              </button>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsFreelancerEmailModalOpen(false)}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLaunchFreelancerEmailClient}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Send size={14} />
+                  <span>Baixar PDF & Abrir no E-mail</span>
                 </button>
               </div>
             </div>

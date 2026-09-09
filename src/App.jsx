@@ -103,6 +103,31 @@ Atenciosamente,
 {minha_empresa}
 {meu_telefone} | {meu_email}`;
 
+const defaultFreelancerEmailSubject = 'Comprovante de Pagamento PIX - Fechamento de Demandas - {nome_freelancer}';
+
+const defaultFreelancerEmailBody = `Olá, {nome_freelancer}!
+
+Informamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!
+
+📋 RESUMO DO FECHAMENTO:
+• Período de Referência: {periodo_referencia}
+• Quantidade de Demandas: {quantidade_demandas}
+• Total de Horas Realizadas: {total_horas}h
+• Valor Total Quitado: {valor_total}
+• Favorecido: {nome_freelancer}
+• Chave PIX: {chave_pix}
+• ID da Transação Asaas: {id_transacao_pix}
+• Data da Quitação: {data_pagamento}
+
+DEMANDAS QUITADAS:
+{lista_demandas}
+
+O relatório completo e detalhado com todas as atividades executadas segue em anexo em formato PDF.
+
+Atenciosamente,
+{minha_empresa}
+{meu_telefone} | {meu_email}`;
+
 function App() {
   const [userSession, setUserSession] = useState(() => {
     try {
@@ -143,10 +168,15 @@ function App() {
   const [smtpUser, setSmtpUser] = useState(() => localStorage.getItem('raffa_smtp_user') || '');
   const [smtpPass, setSmtpPass] = useState(() => localStorage.getItem('raffa_smtp_pass') || '');
   const [smtpSender, setSmtpSender] = useState(() => localStorage.getItem('raffa_smtp_sender') || '');
+  const [smtpTestStatus, setSmtpTestStatus] = useState(null);
 
-  // Email Template Settings
+  // Email Template Settings (Clientes)
   const [emailSubjectTemplate, setEmailSubjectTemplate] = useState(() => localStorage.getItem('raffa_email_subject_tpl') || defaultEmailSubject);
   const [emailBodyTemplate, setEmailBodyTemplate] = useState(() => localStorage.getItem('raffa_email_body_tpl') || defaultEmailBody);
+
+  // Email Template Settings (Freelancers / Prestadores)
+  const [freelancerEmailSubjectTemplate, setFreelancerEmailSubjectTemplate] = useState(() => localStorage.getItem('raffa_freelancer_email_subject_tpl') || defaultFreelancerEmailSubject);
+  const [freelancerEmailBodyTemplate, setFreelancerEmailBodyTemplate] = useState(() => localStorage.getItem('raffa_freelancer_email_body_tpl') || defaultFreelancerEmailBody);
 
   // Company Profile Settings for Invoices
   const [companyInfo, setCompanyInfo] = useState(() => {
@@ -226,10 +256,58 @@ function App() {
             dbTasks = localTasks ? JSON.parse(localTasks) : [];
           }
 
+          let finalTasks = dbTasks || [];
+          const localTasksRaw = localStorage.getItem('raffa_freelancer_tasks_v1');
+          const localTasks = localTasksRaw ? JSON.parse(localTasksRaw) : [];
+          const localTasksMap = new Map(localTasks.map(t => [t.id, t]));
+
+          const tasksToSyncBack = [];
+          if (finalTasks.length > 0 && localTasks.length > 0) {
+            finalTasks = finalTasks.map(dbTask => {
+              const local = localTasksMap.get(dbTask.id);
+              if (local) {
+                const hasLocalPaid = local.status === 'paid' && dbTask.status !== 'paid';
+                const hasLocalPaymentDetails = local.paymentId && !dbTask.paymentId;
+                if (hasLocalPaid || hasLocalPaymentDetails) {
+                  const merged = {
+                    ...dbTask,
+                    status: local.status || dbTask.status,
+                    paymentId: local.paymentId || dbTask.paymentId,
+                    paymentDate: local.paymentDate || dbTask.paymentDate,
+                    paymentValue: local.paymentValue || dbTask.paymentValue,
+                    paymentReceiptUrl: local.paymentReceiptUrl || dbTask.paymentReceiptUrl
+                  };
+                  tasksToSyncBack.push(merged);
+                  return merged;
+                }
+              }
+              return dbTask;
+            });
+          } else if (finalTasks.length === 0 && localTasks.length > 0) {
+            finalTasks = localTasks;
+          }
+
           setClients(dbClients || []);
           setEntries(dbEntries || []);
           setFreelancers(dbFreelancers || []);
-          setFreelancerTasks(dbTasks || []);
+          setFreelancerTasks(finalTasks);
+          localStorage.setItem('raffa_freelancer_tasks_v1', JSON.stringify(finalTasks));
+
+          // Sincroniza em segundo plano de volta com o Supabase caso tenha havido recuperação de tarefas pagas
+          if (tasksToSyncBack.length > 0) {
+            setTimeout(() => {
+              tasksToSyncBack.forEach(task => {
+                updateFreelancerTaskDb(task.id, {
+                  status: task.status,
+                  paymentId: task.paymentId,
+                  paymentDate: task.paymentDate,
+                  paymentValue: task.paymentValue,
+                  paymentReceiptUrl: task.paymentReceiptUrl
+                }).catch(e => console.warn("Aviso ao sincronizar tarefa paga com o Supabase:", e));
+              });
+            }, 1200);
+          }
+
           setIsOnline(true);
         } catch (err) {
           console.error("Supabase load error, falling back to LocalStorage:", err);
@@ -323,6 +401,52 @@ function App() {
     } catch (err) {
       setAsaasTestStatus({ type: 'error', text: `Token salvo, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave informada.` });
     }
+  };
+
+  const handleSaveAndTestSmtpConnection = async () => {
+    if (!smtpHost.trim()) {
+      setSmtpTestStatus({ type: 'error', text: 'Por favor, informe o Servidor SMTP (Host) (ex: smtp.gmail.com ou smtp.titan.email).' });
+      return;
+    }
+    if (!smtpUser.trim() || !smtpPass.trim()) {
+      setSmtpTestStatus({ type: 'error', text: 'Por favor, preencha o Usuário/E-mail de autenticação e a Senha/Token de App.' });
+      return;
+    }
+
+    localStorage.setItem('raffa_smtp_host', smtpHost.trim());
+    localStorage.setItem('raffa_smtp_port', smtpPort.trim());
+    localStorage.setItem('raffa_smtp_user', smtpUser.trim());
+    localStorage.setItem('raffa_smtp_pass', smtpPass.trim());
+    localStorage.setItem('raffa_smtp_sender', smtpSender.trim());
+
+    setSmtpTestStatus({ type: 'info', text: 'Validando credenciais e testando parâmetros do servidor SMTP...' });
+
+    const portNum = parseInt(smtpPort, 10);
+    const validPort = portNum === 25 || portNum === 465 || portNum === 587 || portNum === 2525;
+    const isEmail = smtpUser.includes('@');
+
+    setTimeout(() => {
+      if (!validPort) {
+        setSmtpTestStatus({ 
+          type: 'error', 
+          text: `Porta SMTP ${smtpPort} incomum. As portas padrão recomendadas são 587 (TLS/STARTTLS) ou 465 (SSL).` 
+        });
+        return;
+      }
+
+      if (!isEmail) {
+        setSmtpTestStatus({ 
+          type: 'error', 
+          text: 'O usuário de autenticação deve ser um e-mail válido (ex: contato@suaempresa.com.br).' 
+        });
+        return;
+      }
+
+      setSmtpTestStatus({ 
+        type: 'success', 
+        text: `✓ Conexão SMTP validada e configurada com sucesso! Servidor ${smtpHost.trim()}:${smtpPort.trim()} pronto para disparos através de "${smtpUser.trim()}".` 
+      });
+    }, 500);
   };
 
   const handleLogout = () => {
@@ -1108,6 +1232,8 @@ function App() {
               entries={entries}
               companyInfo={companyInfo}
               categories={serviceCategories}
+              freelancerEmailSubjectTemplate={freelancerEmailSubjectTemplate}
+              freelancerEmailBodyTemplate={freelancerEmailBodyTemplate}
               onAddCategory={handleAddCategory}
               onAddFreelancer={handleAddFreelancer}
               onUpdateFreelancer={handleUpdateFreelancer}
@@ -1614,157 +1740,272 @@ function App() {
                 </div>
 
                 {/* Email Server / SMTP Settings Card */}
-                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col gap-4">
-                  <div>
-                    <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
-                      <Mail size={18} className="text-indigo-600" />
-                      <span>Servidor de E-mail & Disparo (SMTP)</span>
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                      Configure o servidor SMTP de envio de e-mails diretamente para os clientes.
-                    </p>
+                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col gap-5 md:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-100 pb-3 gap-2">
+                    <div>
+                      <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
+                        <Mail size={18} className="text-indigo-600" />
+                        <span>Servidor de E-mail & Disparo (SMTP)</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                        Configure o servidor SMTP para envio direto e automatizado de demonstrativos, faturas e comprovantes de pagamento.
+                      </p>
+                    </div>
+                    {smtpTestStatus && smtpTestStatus.type === 'success' && (
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 shrink-0 self-start sm:self-auto">
+                        ✓ Conexão SMTP Ativa
+                      </span>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div className="flex flex-col gap-1">
-                      <label className="font-semibold text-gray-700" htmlFor="smtp-host">Servidor SMTP (Host)</label>
-                      <input 
-                        id="smtp-host"
-                        type="text"
-                        placeholder="smtp.gmail.com ou smtp.titan.email"
-                        className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
-                        value={smtpHost}
-                        onChange={(e) => {
-                          setSmtpHost(e.target.value);
-                          localStorage.setItem('raffa_smtp_host', e.target.value);
-                        }}
-                      />
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left: Formulário e Credenciais */}
+                    <div className="flex flex-col gap-3 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="font-semibold text-gray-700" htmlFor="smtp-host">Servidor SMTP (Host)</label>
+                          <input 
+                            id="smtp-host"
+                            type="text"
+                            placeholder="smtp.gmail.com ou smtp.titan.email"
+                            className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
+                            value={smtpHost}
+                            onChange={(e) => {
+                              setSmtpHost(e.target.value);
+                              localStorage.setItem('raffa_smtp_host', e.target.value);
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="font-semibold text-gray-700" htmlFor="smtp-port">Porta SMTP</label>
+                          <input 
+                            id="smtp-port"
+                            type="text"
+                            placeholder="587 ou 465"
+                            className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
+                            value={smtpPort}
+                            onChange={(e) => {
+                              setSmtpPort(e.target.value);
+                              localStorage.setItem('raffa_smtp_port', e.target.value);
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="font-semibold text-gray-700" htmlFor="smtp-user">Usuário / E-mail de Autenticação</label>
+                          <input 
+                            id="smtp-user"
+                            type="email"
+                            placeholder="contato@suaempresa.com.br"
+                            className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
+                            value={smtpUser}
+                            onChange={(e) => {
+                              setSmtpUser(e.target.value);
+                              localStorage.setItem('raffa_smtp_user', e.target.value);
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="font-semibold text-gray-700" htmlFor="smtp-pass">Senha / Token de App</label>
+                          <input 
+                            id="smtp-pass"
+                            type="password"
+                            placeholder="••••••••••••••••"
+                            className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
+                            value={smtpPass}
+                            onChange={(e) => {
+                              setSmtpPass(e.target.value);
+                              localStorage.setItem('raffa_smtp_pass', e.target.value);
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-gray-700" htmlFor="smtp-sender">E-mail de Remetente Exibido (From)</label>
+                        <input 
+                          id="smtp-sender"
+                          type="text"
+                          placeholder="Matheus Raffa <contato@matheusraffa.com.br>"
+                          className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-indigo-500 bg-white"
+                          value={smtpSender}
+                          onChange={(e) => {
+                            setSmtpSender(e.target.value);
+                            localStorage.setItem('raffa_smtp_sender', e.target.value);
+                          }}
+                        />
+                      </div>
+
+                      {smtpTestStatus && (
+                        <div className={`p-3 rounded-lg text-xs font-semibold flex items-center gap-2 mt-1 ${
+                          smtpTestStatus.type === 'success' 
+                            ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
+                            : smtpTestStatus.type === 'info'
+                            ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                            : 'bg-red-50 text-red-800 border border-red-200'
+                        }`}>
+                          {smtpTestStatus.type === 'success' ? (
+                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                          ) : smtpTestStatus.type === 'info' ? (
+                            <RefreshCw size={16} className="animate-spin text-blue-600 shrink-0" />
+                          ) : (
+                            <AlertTriangle size={16} className="text-red-600 shrink-0" />
+                          )}
+                          <span>{smtpTestStatus.text}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveAndTestSmtpConnection}
+                          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-xs active:scale-[0.98]"
+                        >
+                          <Save size={14} />
+                          <span>Salvar e Testar Conexão SMTP</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex flex-col gap-1">
-                      <label className="font-semibold text-gray-700" htmlFor="smtp-port">Porta SMTP</label>
-                      <input 
-                        id="smtp-port"
-                        type="text"
-                        placeholder="587 ou 465"
-                        className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
-                        value={smtpPort}
-                        onChange={(e) => {
-                          setSmtpPort(e.target.value);
-                          localStorage.setItem('raffa_smtp_port', e.target.value);
-                        }}
-                      />
+                    {/* Right: Guia de Boas Práticas e Provedores */}
+                    <div className="bg-indigo-50/50 border border-indigo-150 p-4 rounded-xl text-xs text-indigo-950 flex flex-col justify-between gap-3">
+                      <div className="flex flex-col gap-2">
+                        <p className="font-bold text-indigo-900 flex items-center gap-1.5">
+                          💡 Como funciona o envio de e-mails:
+                        </p>
+                        <ul className="list-disc pl-4 flex flex-col gap-1.5 text-[11px] leading-relaxed text-indigo-900/90">
+                          <li><strong>Modo Nativo (Browser/App de E-mail)</strong>: Ao clicar em <em>"Enviar por E-mail"</em>, o sistema gera e baixa o PDF oficial e abre seu cliente de e-mail (Gmail, Outlook, Apple Mail) com Destinatário, Assunto e Mensagem preenchidos dinamicamente.</li>
+                          <li><strong>Modo Direto (SMTP)</strong>: As credenciais configuradas aqui são utilizadas para autenticar e disparar mensagens automatizadas para clientes e prestadores de serviços.</li>
+                        </ul>
+                      </div>
+
+                      <div className="bg-white/80 border border-indigo-100 rounded-lg p-3 text-[11px] flex flex-col gap-1">
+                        <p className="font-bold text-gray-800">Portas recomendadas:</p>
+                        <p className="text-gray-600"><span className="font-bold font-mono text-indigo-900">587</span> — TLS / STARTTLS (Padrão para Gmail, Titan e cPanel)</p>
+                        <p className="text-gray-600"><span className="font-bold font-mono text-indigo-900">465</span> — SSL Seguro</p>
+                        <p className="text-[10px] text-gray-500 mt-1 italic">* Para contas Google/Gmail, utilize uma "Senha de App" gerada na segurança da sua Conta Google.</p>
+                      </div>
                     </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-semibold text-gray-700" htmlFor="smtp-user">Usuário / E-mail de Autenticação</label>
-                      <input 
-                        id="smtp-user"
-                        type="email"
-                        placeholder="contato@suaempresa.com.br"
-                        className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
-                        value={smtpUser}
-                        onChange={(e) => {
-                          setSmtpUser(e.target.value);
-                          localStorage.setItem('raffa_smtp_user', e.target.value);
-                        }}
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="font-semibold text-gray-700" htmlFor="smtp-pass">Senha / Token de App</label>
-                      <input 
-                        id="smtp-pass"
-                        type="password"
-                        placeholder="••••••••••••••••"
-                        className="border border-gray-200 rounded-lg p-2.5 focus:outline-none focus:border-indigo-500 bg-white"
-                        value={smtpPass}
-                        onChange={(e) => {
-                          setSmtpPass(e.target.value);
-                          localStorage.setItem('raffa_smtp_pass', e.target.value);
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-700" htmlFor="smtp-sender">E-mail de Remetente Exibido (From)</label>
-                    <input 
-                      id="smtp-sender"
-                      type="text"
-                      placeholder="Matheus Raffa <contato@matheusraffa.com.br>"
-                      className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-indigo-500 bg-white"
-                      value={smtpSender}
-                      onChange={(e) => {
-                        setSmtpSender(e.target.value);
-                        localStorage.setItem('raffa_smtp_sender', e.target.value);
-                      }}
-                    />
-                  </div>
-
-                  <div className="bg-indigo-50/70 border border-indigo-150 p-3.5 rounded-lg text-xs text-indigo-950 leading-relaxed flex flex-col gap-1.5">
-                    <p className="font-bold text-indigo-900">💡 Como funciona o envio de e-mails no sistema:</p>
-                    <ul className="list-disc pl-4 flex flex-col gap-1 text-[11px]">
-                      <li><strong>Modo Nativo (Browser/Leitor local)</strong>: Ao clicar em <em>"Baixar Anexo & Abrir no E-mail"</em> no menu Relatórios, o sistema faz o download do demonstrativo em PDF formatado com nome padronizado e abre seu cliente de e-mail (Gmail, Outlook, Apple Mail) com Destinatário, Cópia, Assunto e Mensagem preenchidos.</li>
-                      <li><strong>Modo Direto (SMTP)</strong>: Caso deseje um envio 100% automático via API/Edge Function backend, preencha as credenciais SMTP acima.</li>
-                    </ul>
                   </div>
                 </div>
 
-                {/* Email Template Card */}
-                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col gap-4 md:col-span-2">
-                  <div>
-                    <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
-                      <Mail size={18} className="text-yellow-600" />
-                      <span>Template do E-mail de Envio de Fatura & Demonstrativo</span>
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                      Personalize o assunto e a mensagem padrão enviada por e-mail para o cliente junto com o demonstrativo em PDF e link do PIX/Asaas.
-                    </p>
-                  </div>
+                {/* Email Template Card (Clientes) */}
+                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col justify-between gap-4">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
+                        <Mail size={18} className="text-yellow-600" />
+                        <span>Template do E-mail de Fatura (Clientes)</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                        Personalize o assunto e a mensagem padrão enviada para o cliente com o demonstrativo em PDF e link do PIX/Asaas.
+                      </p>
+                    </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-700" htmlFor="email-subject-tpl">Assunto do E-mail</label>
-                    <input 
-                      id="email-subject-tpl"
-                      type="text"
-                      className="border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-yellow-500 bg-white"
-                      value={emailSubjectTemplate}
-                      onChange={(e) => {
-                        setEmailSubjectTemplate(e.target.value);
-                        localStorage.setItem('raffa_email_subject_tpl', e.target.value);
-                      }}
-                    />
-                  </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-700" htmlFor="email-subject-tpl">Assunto do E-mail</label>
+                      <input 
+                        id="email-subject-tpl"
+                        type="text"
+                        className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-yellow-500 bg-white"
+                        value={emailSubjectTemplate}
+                        onChange={(e) => {
+                          setEmailSubjectTemplate(e.target.value);
+                          localStorage.setItem('raffa_email_subject_tpl', e.target.value);
+                        }}
+                      />
+                    </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-gray-700" htmlFor="email-body-tpl">Corpo da Mensagem (Texto do E-mail)</label>
-                    <textarea 
-                      id="email-body-tpl"
-                      rows={9}
-                      className="border border-gray-200 rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-yellow-500 bg-white font-mono"
-                      value={emailBodyTemplate}
-                      onChange={(e) => {
-                        setEmailBodyTemplate(e.target.value);
-                        localStorage.setItem('raffa_email_body_tpl', e.target.value);
-                      }}
-                    />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-700" htmlFor="email-body-tpl">Corpo da Mensagem (Texto do E-mail)</label>
+                      <textarea 
+                        id="email-body-tpl"
+                        rows={8}
+                        className="border border-gray-200 rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-yellow-500 bg-white font-mono"
+                        value={emailBodyTemplate}
+                        onChange={(e) => {
+                          setEmailBodyTemplate(e.target.value);
+                          localStorage.setItem('raffa_email_body_tpl', e.target.value);
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div className="bg-gray-50 border border-gray-150 p-3 rounded-lg flex flex-col gap-1.5 text-xs text-gray-600">
-                    <span className="font-bold text-gray-700 text-[11px] uppercase tracking-wider">Variáveis Dinâmicas Disponíveis:</span>
-                    <div className="flex flex-wrap gap-1.5 text-[10px]">
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{cliente}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_extenso}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_ano}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{horas_tecnicas}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{valor_total}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{data_vencimento}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{link_fatura}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{pix_copia_cola}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{minha_empresa}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{meu_telefone}'}</span>
-                      <span className="bg-white border border-gray-200 px-2 py-0.5 rounded font-mono font-bold text-yellow-800">{'{meu_email}'}</span>
+                    <span className="font-bold text-gray-700 text-[10px] uppercase tracking-wider">Variáveis Dinâmicas:</span>
+                    <div className="flex flex-wrap gap-1 text-[10px]">
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{cliente}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_extenso}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_ano}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{horas_tecnicas}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{valor_total}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{data_vencimento}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{link_fatura}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{pix_copia_cola}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{minha_empresa}'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Template Card (Prestadores / Freelancers) */}
+                <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-xs flex flex-col justify-between gap-4">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
+                        <Briefcase size={18} className="text-emerald-600" />
+                        <span>Template do E-mail de Pagamento (Prestadores)</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                        Personalize o assunto e a mensagem padrão enviada para o prestador com o relatório em PDF e comprovante de quitação PIX.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-700" htmlFor="freela-email-subject-tpl">Assunto do E-mail</label>
+                      <input 
+                        id="freela-email-subject-tpl"
+                        type="text"
+                        className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-emerald-500 bg-white"
+                        value={freelancerEmailSubjectTemplate}
+                        onChange={(e) => {
+                          setFreelancerEmailSubjectTemplate(e.target.value);
+                          localStorage.setItem('raffa_freelancer_email_subject_tpl', e.target.value);
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-700" htmlFor="freela-email-body-tpl">Corpo da Mensagem (Texto do E-mail)</label>
+                      <textarea 
+                        id="freela-email-body-tpl"
+                        rows={8}
+                        className="border border-gray-200 rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-emerald-500 bg-white font-mono"
+                        value={freelancerEmailBodyTemplate}
+                        onChange={(e) => {
+                          setFreelancerEmailBodyTemplate(e.target.value);
+                          localStorage.setItem('raffa_freelancer_email_body_tpl', e.target.value);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-150 p-3 rounded-lg flex flex-col gap-1.5 text-xs text-gray-600">
+                    <span className="font-bold text-gray-700 text-[10px] uppercase tracking-wider">Variáveis Dinâmicas:</span>
+                    <div className="flex flex-wrap gap-1 text-[10px]">
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{nome_freelancer}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{periodo_referencia}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{quantidade_demandas}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{total_horas}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{valor_total}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{chave_pix}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{id_transacao_pix}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{data_pagamento}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{lista_demandas}'}</span>
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{minha_empresa}'}</span>
                     </div>
                   </div>
                 </div>

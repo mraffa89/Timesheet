@@ -396,14 +396,35 @@ export async function addFreelancerTaskDb(task) {
 export async function updateFreelancerTaskDb(id, task) {
   const db = getSupabaseInstance();
   if (!db) return null;
-  const dbTask = mapFreelancerTaskToDb(task);
-  const { data, error } = await db
-    .from('freelancer_tasks')
-    .update(dbTask)
-    .eq('id', id)
-    .select();
-  if (error) throw error;
-  return mapFreelancerTaskFromDb(data[0]);
+  const dbTask = mapFreelancerTaskToDb(task, true);
+  try {
+    const { data, error } = await db
+      .from('freelancer_tasks')
+      .update(dbTask)
+      .eq('id', id)
+      .select();
+    if (error) throw error;
+    return data && data[0] ? mapFreelancerTaskFromDb(data[0]) : null;
+  } catch (err) {
+    // Caso a tabela no Supabase ainda não possua as colunas payment_id/date/receipt_url
+    if (err.message && (err.message.includes('payment_') || err.message.includes('column') || err.message.includes('schema cache'))) {
+      console.warn("Supabase ainda não possui colunas de pagamento, atualizando apenas campos padrão:", err.message);
+      const fallbackTask = { ...dbTask };
+      delete fallbackTask.payment_id;
+      delete fallbackTask.payment_date;
+      delete fallbackTask.payment_value;
+      delete fallbackTask.payment_receipt_url;
+      const { data: fallbackData, error: fallbackError } = await db
+        .from('freelancer_tasks')
+        .update(fallbackTask)
+        .eq('id', id)
+        .select();
+      if (!fallbackError && fallbackData && fallbackData[0]) {
+        return mapFreelancerTaskFromDb(fallbackData[0]);
+      }
+    }
+    throw err;
+  }
 }
 
 export async function deleteFreelancerTaskDb(id) {
@@ -417,7 +438,27 @@ export async function deleteFreelancerTaskDb(id) {
   return true;
 }
 
-function mapFreelancerTaskToDb(task) {
+function mapFreelancerTaskToDb(task, isPartialUpdate = false) {
+  if (isPartialUpdate) {
+    const payload = {};
+    if (task.title !== undefined) payload.title = task.title;
+    if (task.freelancerId !== undefined) payload.freelancer_id = task.freelancerId || null;
+    if (task.clientId !== undefined) payload.client_id = task.clientId || null;
+    if (task.category !== undefined) payload.category = task.category || 'Digital';
+    if (task.requestDate !== undefined) payload.request_date = task.requestDate || null;
+    if (task.expectedDueDate !== undefined) payload.expected_due_date = task.expectedDueDate || null;
+    if (task.actualDeliveryDate !== undefined) payload.actual_delivery_date = task.actualDeliveryDate || null;
+    if (task.hours !== undefined) payload.hours = parseFloat(task.hours) || 0;
+    if (task.briefingUrl !== undefined) payload.briefing_url = task.briefingUrl || null;
+    if (task.notes !== undefined) payload.notes = task.notes || null;
+    if (task.status !== undefined) payload.status = task.status;
+    if (task.paymentId !== undefined) payload.payment_id = task.paymentId || null;
+    if (task.paymentDate !== undefined) payload.payment_date = task.paymentDate || null;
+    if (task.paymentValue !== undefined) payload.payment_value = task.paymentValue ? parseFloat(task.paymentValue) : null;
+    if (task.paymentReceiptUrl !== undefined) payload.payment_receipt_url = task.paymentReceiptUrl || null;
+    return payload;
+  }
+
   const payload = {
     title: task.title,
     freelancer_id: task.freelancerId || null,
