@@ -32,7 +32,8 @@ import {
   Receipt,
   CreditCard,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -332,9 +333,12 @@ export default function FreelancerManager({
   // Email modal state
   const [isFreelancerEmailModalOpen, setIsFreelancerEmailModalOpen] = useState(false);
   const [freelancerEmailTo, setFreelancerEmailTo] = useState('');
+  const [freelancerEmailCc, setFreelancerEmailCc] = useState('');
   const [freelancerEmailSubject, setFreelancerEmailSubject] = useState('');
   const [freelancerEmailBody, setFreelancerEmailBody] = useState('');
   const [copiedFreelancerEmailBody, setCopiedFreelancerEmailBody] = useState(false);
+  const [isSendingFreelancerEmail, setIsSendingFreelancerEmail] = useState(false);
+  const [freelancerEmailSuccess, setFreelancerEmailSuccess] = useState(false);
 
   // Form states - Task
   const [taskForm, setTaskForm] = useState({
@@ -906,8 +910,15 @@ export default function FreelancerManager({
       paymentDate = payrollData.paymentDates[0] || '';
     }
 
+    if (!freela && targetTasks.length > 0) {
+      freela = getFreelancer(targetTasks[0].freelancerId);
+    }
+
     const recipientEmail = freela?.email || (freela?.username && freela.username.includes('@') ? freela.username : '') || '';
     setFreelancerEmailTo(recipientEmail);
+    setFreelancerEmailCc(companyInfo?.email || '');
+    setFreelancerEmailSuccess(false);
+    setIsSendingFreelancerEmail(false);
 
     const rawSubj = freelancerEmailSubjectTemplate || 'Comprovante de Pagamento PIX - Fechamento de Demandas - {nome_freelancer}';
     const rawBody = freelancerEmailBodyTemplate || `Olá, {nome_freelancer}!\n\nInformamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!\n\n📋 RESUMO DO FECHAMENTO:\n• Período de Referência: {periodo_referencia}\n• Quantidade de Demandas: {quantidade_demandas}\n• Total de Horas Realizadas: {total_horas}h\n• Valor Total Quitado: {valor_total}\n• Favorecido: {nome_freelancer}\n• Chave PIX: {chave_pix}\n• ID da Transação Asaas: {id_transacao_pix}\n• Data da Quitação: {data_pagamento}\n\nDEMANDAS QUITADAS:\n{lista_demandas}\n\nO relatório completo e detalhado com todas as atividades executadas segue em anexo em formato PDF.\n\nAtenciosamente,\n{minha_empresa}\n{meu_telefone} | {meu_email}`;
@@ -946,16 +957,45 @@ export default function FreelancerManager({
   };
 
   const handleLaunchFreelancerEmailClient = async () => {
-    // 1. Gera e faz o download do PDF executivo de fechamento
-    await handleExportPayrollPDF();
+    if (!freelancerEmailTo.trim()) {
+      alert('Por favor, informe o e-mail do destinatário.');
+      return;
+    }
 
-    // 2. Abre o leitor de e-mail do sistema com Destinatário, Assunto e Mensagem
-    const to = encodeURIComponent(freelancerEmailTo);
-    const subj = encodeURIComponent(freelancerEmailSubject);
-    const body = encodeURIComponent(freelancerEmailBody);
+    try {
+      setIsSendingFreelancerEmail(true);
 
-    const mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
-    window.open(mailtoUrl, '_self');
+      // 1. Gera e faz o download do PDF executivo de fechamento
+      await handleExportPayrollPDF();
+
+      // 2. Monta a URL de e-mail com Para, CC (cópia pro meu e-mail de cadastro), Assunto e Mensagem
+      const to = encodeURIComponent(freelancerEmailTo.trim());
+      const cc = freelancerEmailCc.trim() ? encodeURIComponent(freelancerEmailCc.trim()) : '';
+      const subj = encodeURIComponent(freelancerEmailSubject);
+      const body = encodeURIComponent(freelancerEmailBody);
+
+      let mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
+      if (cc) {
+        mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
+      }
+
+      // 3. Disparo seguro via elemento <a> invisível (previne tela em branco do browser)
+      const link = document.createElement('a');
+      link.href = mailtoUrl;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 500);
+
+      // 4. Feedback visual de sucesso
+      setFreelancerEmailSuccess(true);
+    } catch (err) {
+      alert('Erro ao processar fechamento e e-mail: ' + err.message);
+    } finally {
+      setIsSendingFreelancerEmail(false);
+    }
   };
 
   const handleCopyFreelancerEmailText = () => {
@@ -2985,75 +3025,139 @@ export default function FreelancerManager({
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 text-xs">
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-gray-700">E-mail do Prestador (Destinatário):</label>
-                <input 
-                  type="email"
-                  value={freelancerEmailTo}
-                  onChange={(e) => setFreelancerEmailTo(e.target.value)}
-                  placeholder="ex: prestador@gmail.com"
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
-                />
+            {freelancerEmailSuccess ? (
+              <div className="flex flex-col items-center justify-center py-6 px-2 gap-3 text-center animate-in fade-in-0 zoom-in-95">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                  <CheckCircle2 size={30} />
+                </div>
+                <div>
+                  <h3 className="font-title text-base font-bold text-gray-950">E-mail Preparado com Sucesso!</h3>
+                  <p className="text-xs text-gray-600 mt-1 max-w-md">
+                    O relatório de fechamento em PDF foi gerado e baixado. Seu aplicativo de e-mail foi aberto com todas as informações e destinatários preenchidos.
+                  </p>
+                </div>
+                {freelancerEmailCc && (
+                  <div className="text-[11px] text-gray-600 bg-gray-50 border border-gray-200 px-3.5 py-1.5 rounded-xl">
+                    Cópia do e-mail (CC): <strong>{freelancerEmailCc}</strong>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-3 pt-3 border-t border-gray-100 w-full">
+                  <button
+                    type="button"
+                    onClick={handleCopyFreelancerEmailText}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    {copiedFreelancerEmailBody ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{copiedFreelancerEmailBody ? 'Copiado!' : 'Copiar Texto Completo'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFreelancerEmailModalOpen(false);
+                      setFreelancerEmailSuccess(false);
+                    }}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs cursor-pointer"
+                  >
+                    Concluir
+                  </button>
+                </div>
               </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-gray-700">E-mail do Prestador (Destinatário):</label>
+                      <input 
+                        type="email"
+                        value={freelancerEmailTo}
+                        onChange={(e) => setFreelancerEmailTo(e.target.value)}
+                        placeholder="ex: prestador@gmail.com"
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                      />
+                    </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-gray-700">Assunto do E-mail:</label>
-                <input 
-                  type="text"
-                  value={freelancerEmailSubject}
-                  onChange={(e) => setFreelancerEmailSubject(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
-                />
-              </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="font-bold text-gray-700">Com Cópia (CC - Meu E-mail):</label>
+                      <input 
+                        type="email"
+                        value={freelancerEmailCc}
+                        onChange={(e) => setFreelancerEmailCc(e.target.value)}
+                        placeholder="ex: contato@minhaempresa.com"
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                      />
+                    </div>
+                  </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="font-bold text-gray-700">Mensagem (Corpo do E-mail):</label>
-                <textarea 
-                  rows={9}
-                  value={freelancerEmailBody}
-                  onChange={(e) => setFreelancerEmailBody(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono leading-relaxed text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
-                />
-              </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="font-bold text-gray-700">Assunto do E-mail:</label>
+                    <input 
+                      type="text"
+                      value={freelancerEmailSubject}
+                      onChange={(e) => setFreelancerEmailSubject(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                    />
+                  </div>
 
-              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-[11px] text-indigo-950 flex items-start gap-2">
-                <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Anexo em PDF Automático:</strong> Ao clicar em <strong>"Baixar PDF & Abrir no E-mail"</strong>, o relatório executivo em PDF é salvo automaticamente em seus downloads e o seu aplicativo de e-mail abre pronto com Destinatário, Assunto e Mensagem preenchidos para envio imediato.
-                </span>
-              </div>
-            </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="font-bold text-gray-700">Mensagem (Prévia do Corpo do E-mail):</label>
+                    <textarea 
+                      rows={8}
+                      value={freelancerEmailBody}
+                      onChange={(e) => setFreelancerEmailBody(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono leading-relaxed text-gray-900 focus:outline-none focus:border-indigo-600 focus:bg-white"
+                    />
+                  </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={handleCopyFreelancerEmailText}
-                className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                {copiedFreelancerEmailBody ? <Check size={14} /> : <Copy size={14} />}
-                <span>{copiedFreelancerEmailBody ? 'Copiado!' : 'Copiar Mensagem'}</span>
-              </button>
+                  <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-[11px] text-indigo-950 flex items-start gap-2">
+                    <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Anexo em PDF Automático:</strong> Ao clicar em <strong>"Enviar E-mail"</strong>, o relatório executivo em PDF é salvo automaticamente em seus downloads e o seu aplicativo de e-mail abre pronto com Destinatário, Cópia (CC), Assunto e Mensagem preenchidos.
+                    </span>
+                  </div>
+                </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setIsFreelancerEmailModalOpen(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={handleCopyFreelancerEmailText}
+                    className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {copiedFreelancerEmailBody ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{copiedFreelancerEmailBody ? 'Copiado!' : 'Copiar Mensagem'}</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleLaunchFreelancerEmailClient}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Send size={14} />
-                  <span>Baixar PDF & Abrir no E-mail</span>
-                </button>
-              </div>
-            </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsFreelancerEmailModalOpen(false)}
+                      className="px-4 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleLaunchFreelancerEmailClient}
+                      disabled={isSendingFreelancerEmail}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isSendingFreelancerEmail ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Preparando & Enviando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send size={14} />
+                          <span>Enviar E-mail</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

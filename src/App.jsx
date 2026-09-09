@@ -1167,6 +1167,7 @@ function App() {
               entries={entries} 
               clients={clients} 
               onNavigateToTab={(tab) => setActiveTab(tab)} 
+              onUpdateClient={handleUpdateClient}
             />
           )}
           

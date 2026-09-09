@@ -18,8 +18,9 @@ import {
   ArrowDown,
   ArrowUp
 } from 'lucide-react';
+import ClientModal from './ClientModal';
 
-export default function Dashboard({ entries = [], clients = [], onNavigateToTab }) {
+export default function Dashboard({ entries = [], clients = [], onNavigateToTab, onUpdateClient }) {
   // 1. Filtro de Período exclusivo ('current_month', 'prev_month', 'select_month')
   const [periodFilter, setPeriodFilter] = useState('current_month');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -35,6 +36,8 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
   const [hoveredClientChart, setHoveredClientChart] = useState(null);
   const [clientSearch, setClientSearch] = useState('');
   const [expandedClientId, setExpandedClientId] = useState(null);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [selectedClientForEdit, setSelectedClientForEdit] = useState(null);
 
   // Helper para normalizar formatos de datas para YYYY-MM-DD
   const normalizeDateStr = (dateStr) => {
@@ -1066,9 +1069,27 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
                     
                     {/* Info do Cliente com Iniciais e Nome */}
                     <div className="flex items-center gap-3 min-w-[220px]">
-                      <div className="flex items-center justify-center w-9 h-9 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-bold font-title text-xs shrink-0">
-                        {c.initials}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const fullClient = clients.find(cl => cl.id === c.clientId) || {
+                            id: c.clientId,
+                            name: c.clientName,
+                            contractType: clientObj?.contractType || 'hybrid',
+                            fixedFee: clientObj?.fixedFee || 0,
+                            hourlyRate: clientObj?.hourlyRate || 200,
+                            hoursIncluded: clientObj?.hoursIncluded || 0,
+                            isActive: c.isActive !== false
+                          };
+                          setSelectedClientForEdit(fullClient);
+                          setIsClientModalOpen(true);
+                        }}
+                        className="flex items-center justify-center w-9 h-9 bg-gray-50 hover:bg-yellow-100 hover:border-yellow-400 border border-gray-200 rounded-xl text-gray-800 font-bold font-title text-xs shrink-0 cursor-pointer transition-all shadow-2xs group"
+                        title={`Clique para visualizar ou editar o cadastro de ${c.clientName}`}
+                      >
+                        <span className="group-hover:text-yellow-800 transition-colors">{c.initials}</span>
+                      </button>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-gray-900 leading-tight">{c.clientName}</span>
@@ -1199,6 +1220,21 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab 
           )}
         </div>
       </div>
+
+      {/* Pop-up de Cadastro / Edição do Cliente */}
+      <ClientModal
+        isOpen={isClientModalOpen}
+        onClose={() => {
+          setIsClientModalOpen(false);
+          setSelectedClientForEdit(null);
+        }}
+        client={selectedClientForEdit}
+        onSave={(updatedData) => {
+          if (onUpdateClient) {
+            onUpdateClient(updatedData);
+          }
+        }}
+      />
 
     </div>
   );

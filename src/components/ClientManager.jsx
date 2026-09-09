@@ -7,7 +7,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [isSyncingAsaas, setIsSyncingAsaas] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'active' | 'inactive'
+  const [filterStatus, setFilterStatus] = useState('active'); // 'active' | 'inactive' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
   const [tableSortField, setTableSortField] = useState('name'); // 'status' | 'name' | 'cnpj' | 'contract' | 'contacts'
@@ -396,17 +396,6 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 border-b border-gray-200 pb-3">
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setFilterStatus('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              filterStatus === 'all' 
-                ? 'bg-gray-900 text-white shadow-2xs' 
-                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-          >
-            Todos ({clients.length})
-          </button>
-
-          <button 
             onClick={() => setFilterStatus('active')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               filterStatus === 'active' 
@@ -428,6 +417,17 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
           >
             <span className="w-2 h-2 rounded-full bg-gray-400"></span>
             Inativos ({inactiveCount})
+          </button>
+
+          <button 
+            onClick={() => setFilterStatus('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              filterStatus === 'all' 
+                ? 'bg-gray-900 text-white shadow-2xs' 
+                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+          >
+            Todos ({clients.length})
           </button>
         </div>
 

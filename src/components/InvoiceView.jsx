@@ -568,7 +568,15 @@ Atenciosamente,
       mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
     }
 
-    window.open(mailtoUrl, '_self');
+    // Disparo seguro via link oculto (evita tela em branco causada por window.open _self)
+    const link = document.createElement('a');
+    link.href = mailtoUrl;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+    }, 500);
   };
 
   const handleCopyEmailText = () => {
@@ -578,7 +586,7 @@ Atenciosamente,
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 max-w-[880px] mx-auto w-full">
       
       {/* Page Header */}
       <div className="no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
