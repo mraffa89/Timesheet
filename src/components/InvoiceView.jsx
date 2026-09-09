@@ -536,8 +536,11 @@ Atenciosamente,
     const monthParts = selectedMonth.split('-');
     const mesExtenso = getMonthNamePT(selectedMonth);
     const mesAno = `${monthParts[1]}/${monthParts[0]}`;
+    const clientFirstName = (client?.name || '').trim().split(/\s+/)[0] || '';
 
     const replacements = {
+      '{primeiro_nome}': clientFirstName,
+      '{primeironome}': clientFirstName,
       '{cliente}': client.name,
       '{empresa}': client.name,
       '{mes_extenso}': mesExtenso,

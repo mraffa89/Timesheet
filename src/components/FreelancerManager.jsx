@@ -877,8 +877,9 @@ export default function FreelancerManager({
   const handleSendWhatsAppReceipt = (data) => {
     const freela = data.freelancer;
     const phoneDigits = (freela.phone || '').replace(/\D/g, '');
+    const freelaFirstName = (freela?.name || '').trim().split(/\s+/)[0] || (freela?.name || 'Prestador');
     let text = `*COMPROVANTE DE PAGAMENTO PIX - MHB RAFFA*\n`;
-    text += `Olá, ${freela.name}!\n\n`;
+    text += `Olá, ${freelaFirstName}!\n\n`;
     text += `Seu pagamento referente às demandas prestadas foi efetuado/agendado via PIX com sucesso!\n\n`;
     text += `📋 *DEMANDAS QUITADAS:*\n`;
     data.tasks.forEach((t, i) => {
@@ -941,8 +942,9 @@ export default function FreelancerManager({
     setFreelancerEmailSuccess(false);
     setIsSendingFreelancerEmail(false);
 
+    const freelaFirstName = (freela?.name || 'Prestador').trim().split(/\s+/)[0] || 'Prestador';
     const rawSubj = freelancerEmailSubjectTemplate || 'Comprovante de Pagamento PIX - Fechamento de Demandas - {nome_freelancer}';
-    const rawBody = freelancerEmailBodyTemplate || `Olá, {nome_freelancer}!\n\nInformamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!\n\n📋 RESUMO DO FECHAMENTO:\n• Período de Referência: {periodo_referencia}\n• Quantidade de Demandas: {quantidade_demandas}\n• Total de Horas Realizadas: {total_horas}h\n• Valor Total Quitado: {valor_total}\n• Favorecido: {nome_freelancer}\n• Chave PIX: {chave_pix}\n• ID da Transação Asaas: {id_transacao_pix}\n• Data da Quitação: {data_pagamento}\n\nDEMANDAS QUITADAS:\n{lista_demandas}\n\nO relatório completo e detalhado com todas as atividades executadas segue em anexo em formato PDF.\n\nAtenciosamente,\n{minha_empresa}\n{meu_telefone} | {meu_email}`;
+    const rawBody = freelancerEmailBodyTemplate || `Olá, {primeiro_nome}!\n\nInformamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!\n\n📋 RESUMO DO FECHAMENTO:\n• Período de Referência: {periodo_referencia}\n• Quantidade de Demandas: {quantidade_demandas}\n• Total de Horas Realizadas: {total_horas}h\n• Valor Total Quitado: {valor_total}\n• Favorecido: {nome_freelancer}\n• Chave PIX: {chave_pix}\n• ID da Transação Asaas: {id_transacao_pix}\n• Data da Quitação: {data_pagamento}\n\nDEMANDAS QUITADAS:\n{lista_demandas}\n\nO relatório completo e detalhado com todas as atividades executadas segue em anexo em formato PDF.\n\nAtenciosamente,\n{minha_empresa}\n{meu_telefone} | {meu_email}`;
 
     const demandListStr = targetTasks.map((t, idx) => {
       const cName = getClientName(t.clientId);
@@ -950,6 +952,9 @@ export default function FreelancerManager({
     }).join('\n');
 
     const replacements = {
+      '{primeiro_nome}': freelaFirstName,
+      '{primeironome}': freelaFirstName,
+      '{primeiro_nome_freelancer}': freelaFirstName,
       '{nome_freelancer}': freela?.name || 'Prestador',
       '{periodo_referencia}': payrollPeriodLabel || 'Período Atual',
       '{quantidade_demandas}': String(targetTasks.length),
@@ -1279,7 +1284,7 @@ export default function FreelancerManager({
   // Copiar resumo para WhatsApp (Enxuto e com indicação clara de PAGO ou A PAGAR)
   const handleCopyWhatsAppSummary = () => {
     const freela = getFreelancer(payrollFreelancerId);
-    const targetName = freela ? freela.name : 'Equipe';
+    const targetName = freela ? ((freela.name || '').trim().split(/\s+/)[0] || freela.name) : 'Equipe';
     const periodName = payrollPeriodLabel;
     const isPaid = payrollData.isAllPaid;
     const hasPaid = payrollData.hasAnyPaid;

@@ -106,7 +106,7 @@ Atenciosamente,
 
 const defaultFreelancerEmailSubject = 'Comprovante de Pagamento PIX - Fechamento de Demandas - {nome_freelancer}';
 
-const defaultFreelancerEmailBody = `Olá, {nome_freelancer}!
+const defaultFreelancerEmailBody = `Olá, {primeiro_nome}!
 
 Informamos que o seu pagamento referente às demandas prestadas foi efetuado via PIX com sucesso!
 
@@ -1971,6 +1971,7 @@ function App() {
                   <div className="bg-gray-50 border border-gray-150 p-3 rounded-lg flex flex-col gap-1.5 text-xs text-gray-600">
                     <span className="font-bold text-gray-700 text-[10px] uppercase tracking-wider">Variáveis Dinâmicas:</span>
                     <div className="flex flex-wrap gap-1 text-[10px]">
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800" title="Primeiro nome do cliente (ex: Pedro)">{'{primeiro_nome}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{cliente}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_extenso}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-yellow-800">{'{mes_ano}'}</span>
@@ -2029,6 +2030,7 @@ function App() {
                   <div className="bg-gray-50 border border-gray-150 p-3 rounded-lg flex flex-col gap-1.5 text-xs text-gray-600">
                     <span className="font-bold text-gray-700 text-[10px] uppercase tracking-wider">Variáveis Dinâmicas:</span>
                     <div className="flex flex-wrap gap-1 text-[10px]">
+                      <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800" title="Primeiro nome do prestador (ex: Angela)">{'{primeiro_nome}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{nome_freelancer}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{periodo_referencia}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{quantidade_demandas}'}</span>
