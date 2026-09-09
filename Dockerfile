@@ -1,6 +1,13 @@
 # Stage 1: Build stage
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
+
+# Accept build arguments from Easypanel / Docker buildx
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 COPY package*.json ./
 RUN npm install
 COPY . .
@@ -8,7 +15,11 @@ RUN npm run build
 
 # Stage 2: Production Server (Nginx + Node.js SMTP Backend)
 FROM nginx:alpine
-RUN apk add --no-cache nodejs
+
+# Evita falha de handshake TLS no apk em Alpine mínimo e instala Node.js + certificados CA
+RUN sed -i 's/https/http/g' /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache ca-certificates nodejs
 
 WORKDIR /app
 # Copy built static assets
@@ -27,3 +38,4 @@ EXPOSE 3000
 
 # Start SMTP backend service and Nginx
 CMD ["sh", "-c", "node /app/server.js & nginx -g 'daemon off;'"]
+
