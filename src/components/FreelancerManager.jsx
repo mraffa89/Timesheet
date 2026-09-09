@@ -629,12 +629,12 @@ export default function FreelancerManager({
   const payrollPeriodLabel = useMemo(() => {
     if (payrollPeriodFilter === 'current_month') {
       const today = new Date();
-      return `Mês Atual (${today.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })})`;
+      return today.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     }
     if (payrollPeriodFilter === 'prev_month') {
       const today = new Date();
       const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      return `Mês Anterior (${prevDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })})`;
+      return prevDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
     }
     if (payrollPeriodFilter === 'select_month') {
       return getMonthNamePT(payrollSelectedMonth);
@@ -986,15 +986,14 @@ export default function FreelancerManager({
       const queryString = params.length > 0 ? `?${params.join('&')}` : '';
       const mailtoUrl = `mailto:${to}${queryString}`;
 
-      // 3. Disparo seguro via <a> no mesmo frame (previne about:blank no Chrome/Safari)
-      const link = document.createElement('a');
-      link.href = mailtoUrl;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
+      // 3. Disparo ultra-seguro via <iframe> oculto (previne 100% que o browser navegue ou fique com tela em branco)
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.setAttribute('src', mailtoUrl);
+      document.body.appendChild(iframe);
       setTimeout(() => {
-        if (link.parentNode) link.parentNode.removeChild(link);
-      }, 500);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
 
       // 4. Feedback visual de sucesso
       setFreelancerEmailSuccess(true);

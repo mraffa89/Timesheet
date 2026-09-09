@@ -554,29 +554,49 @@ Atenciosamente,
   };
 
   const handleLaunchEmailClient = async () => {
-    // 1. Baixa o PDF para que o usuário o anexe com facilidade
-    await handleGeneratePdf();
+    try {
+      // 1. Baixa o PDF para que o usuário o anexe com facilidade
+      await handleGeneratePdf();
 
-    // 2. Dispara o cliente de e-mail (Gmail, Outlook, Mail) com Para, CC, Assunto e Corpo preenchidos
-    const to = client?.email || '';
-    const cc = client?.additionalEmail || '';
-    const subj = encodeURIComponent(emailSubject);
-    const body = encodeURIComponent(emailBody);
+      // 2. Dispara o cliente de e-mail com Para, CC, Assunto e Corpo preenchidos
+      const to = client?.email || '';
+      const cc = client?.additionalEmail || '';
+      const subj = encodeURIComponent(emailSubject);
+      const safeBody = emailBody.length > 1500 ? emailBody.substring(0, 1500) + '\n\n[Mensagem completa disponível no Demonstrativo em anexo]' : emailBody;
+      const body = encodeURIComponent(safeBody);
 
-    let mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
-    if (cc) {
-      mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
+      let mailtoUrl = `mailto:${to}?subject=${subj}&body=${body}`;
+      if (cc) {
+        mailtoUrl = `mailto:${to}?cc=${cc}&subject=${subj}&body=${body}`;
+      }
+
+      // Disparo ultra-seguro via <iframe> oculto (previne tela em branco do browser)
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.setAttribute('src', mailtoUrl);
+      document.body.appendChild(iframe);
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 1000);
+    } catch (err) {
+      alert('Erro ao preparar e-mail: ' + err.message);
     }
+  };
 
-    // Disparo seguro via link oculto (evita tela em branco causada por window.open _self)
-    const link = document.createElement('a');
-    link.href = mailtoUrl;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-    }, 500);
+  const handleLaunchGmailWeb = async () => {
+    try {
+      await handleGeneratePdf();
+
+      const to = encodeURIComponent(client?.email || '');
+      const cc = client?.additionalEmail ? encodeURIComponent(client.additionalEmail) : '';
+      const subj = encodeURIComponent(emailSubject);
+      const body = encodeURIComponent(emailBody);
+
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}${cc ? `&cc=${cc}` : ''}&su=${subj}&body=${body}`;
+      window.open(gmailUrl, '_blank');
+    } catch (err) {
+      alert('Erro ao abrir Gmail: ' + err.message);
+    }
   };
 
   const handleCopyEmailText = () => {
@@ -679,7 +699,7 @@ Atenciosamente,
           )}
 
           {client && (
-            <div className="ml-auto text-xs font-semibold text-gray-400">
+            <div className="text-xs font-semibold text-gray-500 flex items-center gap-1 sm:pl-3 sm:border-l sm:border-gray-200">
               Visualizando faturáveis: <span className="text-yellow-600 font-bold">{clientEntries.length} demandas ({financials.billableHours.toFixed(2).replace('.', ',')}h)</span> de {allEntriesCount} lançamentos totais.
             </div>
           )}
@@ -1082,18 +1102,30 @@ Atenciosamente,
                 <span>{copiedEmailBody ? 'Texto Copiado!' : 'Copiar Texto'}</span>
               </button>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button 
                   type="button"
                   onClick={() => setIsEmailModalOpen(false)}
-                  className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-semibold cursor-pointer"
+                  className="px-3 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-semibold cursor-pointer"
                 >
                   Fechar
                 </button>
+
+                <button 
+                  type="button"
+                  onClick={handleLaunchGmailWeb}
+                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  title="Abrir diretamente na versão Web do Gmail"
+                >
+                  <Mail size={14} className="text-red-600" />
+                  <span>Abrir no Gmail</span>
+                </button>
+
                 <button 
                   type="button"
                   onClick={handleLaunchEmailClient}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  title="Baixar PDF e abrir no aplicativo de e-mail padrão do sistema"
                 >
                   <Send size={14} />
                   <span>Baixar Anexo & Abrir no E-mail</span>

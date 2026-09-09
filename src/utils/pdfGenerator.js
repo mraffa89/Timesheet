@@ -469,18 +469,23 @@ export async function generatePayrollPdf({
   doc.roundedRect(badgeX, 14, badgeWidth, 5.5, 1, 1, 'FD');
   doc.text(badgeText, badgeX + 3, 17.8);
 
+  // Sanitiza o periodLabel para exibir apenas o Mês/Ano (ex: "Agosto de 2026"), removendo prefixos como "Mês Anterior (...)"
+  const cleanPeriod = (periodLabel || 'Mês Atual')
+    .replace(/^Mês (?:Anterior|Atual)\s*\((.*?)\)$/i, '$1')
+    .trim();
+
   // Period Name (large)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
-  doc.text((periodLabel || 'MÊS ATUAL').toUpperCase(), rightX, 25, { align: 'right' });
+  doc.text(cleanPeriod.toUpperCase(), rightX, 25, { align: 'right' });
 
   // Dates: Emissão | Referência
   const todayStr = new Date().toLocaleDateString('pt-BR');
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Emissão: ${todayStr}  |  Ref: ${periodLabel || 'Período'}`, rightX, 30, { align: 'right' });
+  doc.text(`Emissão: ${todayStr}  |  Ref: ${cleanPeriod}`, rightX, 30, { align: 'right' });
 
   // Divider Line at Y = 40 (exact match to generateInvoicePdf)
   const topDividerY = 40;
@@ -570,15 +575,11 @@ export async function generatePayrollPdf({
         ];
       });
 
-  const totalHoursStr = `${totalHours.toFixed(1).replace('.', ',')}h`;
-  const totalAmountStr = fRate > 0 ? formatCurrency(totalAmount) : '-';
-
   autoTable(doc, {
     startY: tableStartY,
     margin: { left: marginX, right: marginX },
     head: [['Demanda / Atividade', 'Cliente', 'Categoria', 'Solicitado', 'Entregue', 'Horas', 'Subtotal', 'Status']],
     body: tableRows,
-    foot: [['Total de Horas Realizadas:', '', '', '', '', totalHoursStr, totalAmountStr, '']],
     theme: 'grid',
     headStyles: {
       fillColor: [30, 30, 30],
@@ -605,21 +606,6 @@ export async function generatePayrollPdf({
     },
     alternateRowStyles: {
       fillColor: [248, 248, 248]
-    },
-    footStyles: {
-      fillColor: [242, 242, 242],
-      textColor: [20, 20, 20],
-      fontStyle: 'bold',
-      fontSize: 8,
-      cellPadding: { top: 3, bottom: 3, left: 1, right: 2 }
-    },
-    didParseCell: function (data) {
-      if (data.section === 'foot') {
-        if (data.column.index === 0) {
-          data.cell.colSpan = 5;
-          data.cell.styles.halign = 'right';
-        }
-      }
     }
   });
 

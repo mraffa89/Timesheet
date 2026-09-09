@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Globe, Trash2, ArrowRightLeft, AlertTriangle } from 'lucide-react';
+import { X, Search, Globe, Trash2, ArrowRightLeft, AlertTriangle, Building } from 'lucide-react';
+import SearchableSelect from './SearchableSelect';
 import { fetchAsaasCustomerByCnpj } from '../utils/asaasIntegration';
 import { formatCpfCnpj, formatPhone, fetchPublicCnpjData } from '../utils/cnpjLookup';
 
@@ -21,7 +22,6 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
 
   // Estados de Mesclagem
   const [isMergeOpen, setIsMergeOpen] = useState(false);
-  const [mergeSearchTerm, setMergeSearchTerm] = useState('');
   const [targetMergeClientId, setTargetMergeClientId] = useState('');
 
   useEffect(() => {
@@ -74,17 +74,21 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
     }
   }, [fixedFee, hourlyRate, contractType]);
 
-  const availableMergeClients = useMemo(() => {
+  const mergeClientOptions = useMemo(() => {
     if (!client || !client.id) return [];
-    return clients.filter(c => {
-      if (c.id === client.id) return false;
-      if (!mergeSearchTerm.trim()) return true;
-      const term = mergeSearchTerm.toLowerCase();
-      const matchName = (c.name || '').toLowerCase().includes(term);
-      const matchCnpj = (c.cnpj || '').replace(/\D/g, '').includes(term.replace(/\D/g, ''));
-      return matchName || matchCnpj;
-    });
-  }, [clients, client, mergeSearchTerm]);
+    return clients
+      .filter(c => c.id !== client.id)
+      .map(c => {
+        const cleanCnpj = (c.cnpj || '').replace(/\D/g, '');
+        const formattedCnpj = formatCpfCnpj(c.cnpj || '');
+        return {
+          value: c.id,
+          label: c.name,
+          sublabel: formattedCnpj || '',
+          keywords: `${c.name} ${cleanCnpj} ${formattedCnpj}`
+        };
+      });
+  }, [clients, client]);
 
   if (!isOpen) return null;
 
@@ -472,28 +476,14 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
 
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11px] font-bold text-gray-700">Selecione o Cliente de Destino:</label>
-                    <div className="relative">
-                      <Search size={13} className="absolute left-2.5 top-2.5 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Buscar cliente por nome ou CNPJ..."
-                        value={mergeSearchTerm}
-                        onChange={(e) => setMergeSearchTerm(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg pl-8 pr-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                    <select
+                    <SearchableSelect
                       value={targetMergeClientId}
-                      onChange={(e) => setTargetMergeClientId(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white font-semibold text-gray-800 focus:outline-none focus:border-amber-500 cursor-pointer"
-                    >
-                      <option value="">Selecione um cliente para mesclar ({availableMergeClients.length} disponíveis)...</option>
-                      {availableMergeClients.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} {c.cnpj ? `(${formatCpfCnpj(c.cnpj)})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setTargetMergeClientId}
+                      options={mergeClientOptions}
+                      placeholder={`Selecione um cliente (${mergeClientOptions.length} disponíveis)...`}
+                      searchPlaceholder="Buscar por nome ou CNPJ (com ou sem pontos)..."
+                      icon={Building}
+                    />
                   </div>
 
                   <div className="flex justify-end pt-1">
