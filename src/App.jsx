@@ -37,6 +37,7 @@ import FreelancerManager from './components/FreelancerManager';
 import FreelancerPortal from './components/FreelancerPortal';
 
 import { defaultClients, defaultEntries } from './data/seedData';
+import { testSmtpConnection } from './utils/smtpService';
 
 // Supabase Connection Import
 import { 
@@ -419,34 +420,26 @@ function App() {
     localStorage.setItem('raffa_smtp_pass', smtpPass.trim());
     localStorage.setItem('raffa_smtp_sender', smtpSender.trim());
 
-    setSmtpTestStatus({ type: 'info', text: 'Validando credenciais e testando parâmetros do servidor SMTP...' });
+    setSmtpTestStatus({ type: 'info', text: 'Conectando ao servidor SMTP e autenticando credenciais em tempo real...' });
 
-    const portNum = parseInt(smtpPort, 10);
-    const validPort = portNum === 25 || portNum === 465 || portNum === 587 || portNum === 2525;
-    const isEmail = smtpUser.includes('@');
-
-    setTimeout(() => {
-      if (!validPort) {
-        setSmtpTestStatus({ 
-          type: 'error', 
-          text: `Porta SMTP ${smtpPort} incomum. As portas padrão recomendadas são 587 (TLS/STARTTLS) ou 465 (SSL).` 
-        });
-        return;
-      }
-
-      if (!isEmail) {
-        setSmtpTestStatus({ 
-          type: 'error', 
-          text: 'O usuário de autenticação deve ser um e-mail válido (ex: contato@suaempresa.com.br).' 
-        });
-        return;
-      }
-
+    try {
+      await testSmtpConnection({
+        host: smtpHost.trim(),
+        port: smtpPort.trim(),
+        user: smtpUser.trim(),
+        pass: smtpPass.trim(),
+        sender: smtpSender.trim()
+      });
       setSmtpTestStatus({ 
         type: 'success', 
-        text: `✓ Conexão SMTP validada e configurada com sucesso! Servidor ${smtpHost.trim()}:${smtpPort.trim()} pronto para disparos através de "${smtpUser.trim()}".` 
+        text: `✓ Conexão SMTP autenticada e validada com sucesso! Servidor ${smtpHost.trim()}:${smtpPort.trim()} pronto para envios diretos com anexo em PDF através de "${smtpUser.trim()}".` 
       });
-    }, 500);
+    } catch (err) {
+      setSmtpTestStatus({
+        type: 'error',
+        text: `Falha ao autenticar no servidor SMTP: ${err.message}`
+      });
+    }
   };
 
   const handleLogout = () => {

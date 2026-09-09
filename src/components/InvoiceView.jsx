@@ -15,11 +15,13 @@ import {
   QrCode, 
   Check,
   Send,
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 import { createAsaasBilling, attachDocumentToAsaasPayment } from '../utils/asaasIntegration';
 import { generateInvoicePdf } from '../utils/pdfGenerator';
 import { formatCpfCnpj, formatPhone } from '../utils/cnpjLookup';
+import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
 
 const groupEntriesByDescription = (entriesList) => {
   const map = new Map();
@@ -654,6 +656,63 @@ Atenciosamente,
     setTimeout(() => setCopiedEmailBody(false), 2500);
   };
 
+  const [isSendingDirectEmail, setIsSendingDirectEmail] = useState(false);
+
+  const handleSendDirectSmtpEmail = async () => {
+    if (!client?.email) {
+      alert('Por favor, informe o e-mail do cliente destinatário.');
+      return;
+    }
+
+    if (!isSmtpConfigured()) {
+      alert('Servidor SMTP não configurado!\n\nPor favor, acesse a aba "Configurações" e vincule seu servidor SMTP (Host, Usuário e Senha) para enviar faturas e demonstrativos diretamente.');
+      return;
+    }
+
+    try {
+      setIsSendingDirectEmail(true);
+
+      const safeClientName = (client.name || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_');
+      const safePeriod = (selectedMonth || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Demonstrativo_${safeClientName}_${safePeriod}.pdf`;
+
+      // 1. Gera o PDF oficial em memória
+      const doc = await generateInvoicePdf({
+        client,
+        entries: clientEntries,
+        financials,
+        selectedMonth,
+        company: companyInfo
+      });
+
+      // 2. Extrai base64 do PDF
+      const dataUri = doc.output('datauristring');
+      const pdfBase64 = dataUri.split(',')[1];
+
+      // 3. Transmite o e-mail diretamente via SMTP com o demonstrativo anexo
+      await sendDirectEmail({
+        to: client.email,
+        cc: client.additionalEmail || '',
+        subject: emailSubject,
+        body: emailBody,
+        pdfBase64,
+        pdfFilename: filename
+      });
+
+      // 4. Também salva o PDF localmente
+      try {
+        doc.save(filename);
+      } catch (_) {}
+
+      alert(`✓ Demonstrativo enviado com sucesso diretamente via SMTP para ${client.email} com o PDF anexo!`);
+      setIsEmailModalOpen(false);
+    } catch (err) {
+      alert('Erro no envio direto via SMTP: ' + err.message);
+    } finally {
+      setIsSendingDirectEmail(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 w-full">
       
@@ -1133,12 +1192,32 @@ Atenciosamente,
                 />
               </div>
 
-              <div className="bg-indigo-50/70 border border-indigo-150 p-3 rounded-lg flex items-center justify-between gap-2 text-indigo-950">
-                <div className="flex items-center gap-2">
-                  <FileText size={16} className="text-indigo-600 shrink-0" />
-                  <span className="font-semibold text-[11px]">
-                    Anexo: <strong>Demonstrativo_{client?.name ? client.name.replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase() : 'CLIENTE'}_{getMonthNamePT(selectedMonth).split(' ')[0]}_{selectedMonth.split('-')[0]}.pdf</strong>
-                  </span>
+              <div className={`p-3 rounded-xl flex items-start gap-2.5 text-xs ${
+                isSmtpConfigured() 
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-950' 
+                  : 'bg-indigo-50 border border-indigo-200 text-indigo-950'
+              }`}>
+                {isSmtpConfigured() ? (
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  {isSmtpConfigured() ? (
+                    <>
+                      <strong className="block text-emerald-900">Servidor SMTP Vinculado & Pronto para Envio Direto</strong>
+                      <span>
+                        Ao clicar em <strong>"Enviar Direto (SMTP)"</strong>, a mensagem será transmitida diretamente através do seu servidor de e-mail com o demonstrativo em anexo PDF oficial: <strong>Demonstrativo_{client?.name ? client.name.replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase() : 'CLIENTE'}_{getMonthNamePT(selectedMonth).split(' ')[0]}_{selectedMonth.split('-')[0]}.pdf</strong>.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <strong className="block text-indigo-900">Anexo em PDF Automático</strong>
+                      <span>
+                        O demonstrativo em PDF oficial será baixado automaticamente. Vincule seu servidor SMTP na aba <em>Configurações</em> para envio direto com o PDF em anexo sem sair do sistema.
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1165,7 +1244,8 @@ Atenciosamente,
                 <button 
                   type="button"
                   onClick={handleLaunchGmailWeb}
-                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  disabled={isSendingDirectEmail}
+                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors disabled:opacity-60"
                   title="Abrir diretamente na versão Web do Gmail"
                 >
                   <Mail size={14} className="text-red-600" />
@@ -1175,11 +1255,32 @@ Atenciosamente,
                 <button 
                   type="button"
                   onClick={handleLaunchEmailClient}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  disabled={isSendingDirectEmail}
+                  className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors disabled:opacity-60"
                   title="Baixar PDF e abrir no aplicativo de e-mail padrão do sistema"
                 >
-                  <Send size={14} />
-                  <span>Baixar Anexo & Abrir no E-mail</span>
+                  <Mail size={14} className="text-gray-500" />
+                  <span>App E-mail</span>
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={handleSendDirectSmtpEmail}
+                  disabled={isSendingDirectEmail}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs transition-colors"
+                  title="Enviar demonstrativo diretamente via servidor SMTP com o PDF anexo"
+                >
+                  {isSendingDirectEmail ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>Transmitindo via SMTP...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      <span>Enviar Direto (SMTP)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

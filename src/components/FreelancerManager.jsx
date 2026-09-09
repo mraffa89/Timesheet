@@ -41,6 +41,7 @@ import autoTable from 'jspdf-autotable';
 import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
 import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType } from '../utils/asaasIntegration';
 import { generatePayrollPdf } from '../utils/pdfGenerator';
+import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
 
 const CATEGORIES = [
   'Digital',
@@ -339,7 +340,9 @@ export default function FreelancerManager({
   const [freelancerEmailBody, setFreelancerEmailBody] = useState('');
   const [copiedFreelancerEmailBody, setCopiedFreelancerEmailBody] = useState(false);
   const [isSendingFreelancerEmail, setIsSendingFreelancerEmail] = useState(false);
+  const [isSendingDirectEmail, setIsSendingDirectEmail] = useState(false);
   const [freelancerEmailSuccess, setFreelancerEmailSuccess] = useState(false);
+  const [directEmailSentSuccess, setDirectEmailSentSuccess] = useState(false);
 
   // Fechar qualquer modal ativo ao pressionar tecla Escape
   useEffect(() => {
@@ -1089,6 +1092,69 @@ export default function FreelancerManager({
     navigator.clipboard.writeText(`Para: ${freelancerEmailTo}\nAssunto: ${freelancerEmailSubject}\n\n${freelancerEmailBody}`);
     setCopiedFreelancerEmailBody(true);
     setTimeout(() => setCopiedFreelancerEmailBody(false), 2500);
+  };
+
+  const handleSendDirectSmtpEmail = async () => {
+    if (!freelancerEmailTo.trim()) {
+      alert('Por favor, informe o e-mail do destinatário.');
+      return;
+    }
+
+    if (!isSmtpConfigured()) {
+      alert('Servidor SMTP não configurado!\n\nPor favor, acesse a aba "Configurações" e vincule seu servidor SMTP (Host, Usuário e Senha) para enviar e-mails diretamente.');
+      return;
+    }
+
+    try {
+      setIsSendingDirectEmail(true);
+
+      const freela = getFreelancer(payrollFreelancerId);
+      const targetName = freela ? freela.name : 'Todos_Prestadores';
+      const safeName = targetName.replace(/[^a-zA-Z0-9]/g, '_');
+      const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Fechamento_${safeName}_${safePeriod}.pdf`;
+
+      // 1. Gera o PDF corporativo oficial em memória com comprovantes e detalhamento
+      const doc = await generatePayrollPdf({
+        freelancer: freela,
+        tasks: payrollData.deliveredMonthTasks,
+        totalHours: payrollData.totalHours,
+        totalAmount: payrollData.totalAmountToPay,
+        periodLabel: payrollPeriodLabel,
+        company: companyInfo,
+        getClientName,
+        isPaid: payrollData.isAllPaid,
+        paymentIds: payrollData.paymentIds,
+        paymentDates: payrollData.paymentDates,
+        paymentReceiptUrls: payrollData.paymentReceiptUrls
+      });
+
+      // 2. Extrai base64 do documento PDF
+      const dataUri = doc.output('datauristring');
+      const pdfBase64 = dataUri.split(',')[1];
+
+      // 3. Transmite o e-mail diretamente via SMTP com o relatório em anexo
+      await sendDirectEmail({
+        to: freelancerEmailTo.trim(),
+        cc: freelancerEmailCc.trim(),
+        subject: freelancerEmailSubject,
+        body: freelancerEmailBody,
+        pdfBase64,
+        pdfFilename: filename
+      });
+
+      // 4. Também salva o PDF localmente nos downloads do usuário para retenção
+      try {
+        doc.save(filename);
+      } catch (_) {}
+
+      setDirectEmailSentSuccess(true);
+      setFreelancerEmailSuccess(true);
+    } catch (err) {
+      alert('Erro no envio direto via SMTP: ' + err.message);
+    } finally {
+      setIsSendingDirectEmail(false);
+    }
   };
 
   // Handlers de Tarefas
@@ -3156,9 +3222,13 @@ export default function FreelancerManager({
                   <CheckCircle2 size={30} />
                 </div>
                 <div>
-                  <h3 className="font-title text-base font-bold text-gray-950">E-mail Preparado com Sucesso!</h3>
+                  <h3 className="font-title text-base font-bold text-gray-950">
+                    {directEmailSentSuccess ? 'E-mail Transmitido com Sucesso via SMTP!' : 'E-mail Preparado com Sucesso!'}
+                  </h3>
                   <p className="text-xs text-gray-600 mt-1 max-w-md">
-                    O relatório de fechamento em PDF foi gerado e baixado. Seu aplicativo de e-mail foi aberto com todas as informações e destinatários preenchidos.
+                    {directEmailSentSuccess 
+                      ? 'O e-mail foi enviado diretamente através do seu servidor SMTP cadastrado com o relatório completo em PDF anexo.' 
+                      : 'O relatório de fechamento em PDF foi gerado e baixado. Seu aplicativo de e-mail foi aberto com todas as informações e destinatários preenchidos.'}
                   </p>
                 </div>
                 {freelancerEmailCc && (
@@ -3180,6 +3250,7 @@ export default function FreelancerManager({
                     onClick={() => {
                       setIsFreelancerEmailModalOpen(false);
                       setFreelancerEmailSuccess(false);
+                      setDirectEmailSentSuccess(false);
                     }}
                     className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs cursor-pointer"
                   >
@@ -3234,11 +3305,33 @@ export default function FreelancerManager({
                     />
                   </div>
 
-                  <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-[11px] text-indigo-950 flex items-start gap-2">
-                    <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
-                    <span>
-                      <strong>Anexo em PDF Automático:</strong> Ao clicar em <strong>"Enviar E-mail"</strong>, o relatório executivo em PDF é salvo automaticamente em seus downloads e o seu aplicativo de e-mail abre pronto com Destinatário, Cópia (CC), Assunto e Mensagem preenchidos.
-                    </span>
+                  <div className={`p-3 rounded-xl text-[11px] flex items-start gap-2 ${
+                    isSmtpConfigured() 
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-950' 
+                      : 'bg-indigo-50 border border-indigo-200 text-indigo-950'
+                  }`}>
+                    {isSmtpConfigured() ? (
+                      <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <FileText size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      {isSmtpConfigured() ? (
+                        <>
+                          <strong className="block text-emerald-900">Servidor SMTP Vinculado & Pronto para Envio Direto</strong>
+                          <span>
+                            Ao clicar em <strong>"Enviar Direto (SMTP)"</strong>, a mensagem será transmitida diretamente através do seu servidor de e-mail com o relatório executivo e comprovante de quitação em anexo PDF oficial.
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <strong className="block text-indigo-900">Anexo em PDF Automático</strong>
+                          <span>
+                            O relatório em PDF é gerado e baixado automaticamente. Você pode abrir pelo Gmail ou pelo aplicativo de e-mail, ou vincular seu servidor SMTP na aba <em>Configurações</em> para envio direto automático.
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3264,8 +3357,8 @@ export default function FreelancerManager({
                     <button
                       type="button"
                       onClick={handleLaunchGmailWeb}
-                      disabled={isSendingFreelancerEmail}
-                      className="px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl text-xs transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                      disabled={isSendingFreelancerEmail || isSendingDirectEmail}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-xl text-xs transition-colors shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
                       title="Abrir diretamente na versão Web do Gmail"
                     >
                       <Mail size={14} className="text-red-600" />
@@ -3275,19 +3368,30 @@ export default function FreelancerManager({
                     <button
                       type="button"
                       onClick={handleLaunchFreelancerEmailClient}
-                      disabled={isSendingFreelancerEmail}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                      disabled={isSendingFreelancerEmail || isSendingDirectEmail}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                       title="Abrir no aplicativo padrão de e-mail do sistema"
                     >
-                      {isSendingFreelancerEmail ? (
+                      <Mail size={14} className="text-gray-500" />
+                      <span>App E-mail</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSendDirectSmtpEmail}
+                      disabled={isSendingDirectEmail || isSendingFreelancerEmail}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                      title="Enviar e-mail diretamente via servidor SMTP com o relatório em PDF anexo"
+                    >
+                      {isSendingDirectEmail ? (
                         <>
                           <RefreshCw size={14} className="animate-spin" />
-                          <span>Preparando...</span>
+                          <span>Transmitindo via SMTP...</span>
                         </>
                       ) : (
                         <>
                           <Send size={14} />
-                          <span>Abrir App E-mail</span>
+                          <span>Enviar Direto (SMTP)</span>
                         </>
                       )}
                     </button>
