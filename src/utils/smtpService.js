@@ -50,6 +50,7 @@ export async function sendDirectEmail({
   cc = '',
   subject,
   body,
+  html = null,
   pdfBase64 = null,
   pdfFilename = 'relatorio.pdf',
   customConfig = null
@@ -69,6 +70,7 @@ export async function sendDirectEmail({
     cc: cc ? cc.trim() : '',
     subject: subject || 'Relatório de Fechamento',
     body: body || '',
+    html: html || null,
     pdfBase64: pdfBase64 || null,
     pdfFilename: pdfFilename || 'relatorio.pdf'
   };

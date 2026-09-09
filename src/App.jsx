@@ -24,7 +24,13 @@ import {
   Edit2,
   Trash2,
   Plus,
-  X
+  X,
+  MessageSquare,
+  MessageCircle,
+  Smartphone,
+  Eye,
+  EyeOff,
+  Send
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ClientManager from './components/ClientManager';
@@ -38,6 +44,10 @@ import FreelancerPortal from './components/FreelancerPortal';
 
 import { defaultClients, defaultEntries } from './data/seedData';
 import { testSmtpConnection } from './utils/smtpService';
+import { 
+  DEFAULT_EVOLUTION_NOTIFICATION_TEMPLATE, 
+  testEvolutionConnection 
+} from './utils/evolutionService';
 
 // Supabase Connection Import
 import { 
@@ -178,6 +188,14 @@ function App() {
   // Email Template Settings (Freelancers / Prestadores)
   const [freelancerEmailSubjectTemplate, setFreelancerEmailSubjectTemplate] = useState(() => localStorage.getItem('raffa_freelancer_email_subject_tpl') || defaultFreelancerEmailSubject);
   const [freelancerEmailBodyTemplate, setFreelancerEmailBodyTemplate] = useState(() => localStorage.getItem('raffa_freelancer_email_body_tpl') || defaultFreelancerEmailBody);
+
+  // Evolution API (WhatsApp) Settings
+  const [evolutionApiUrl, setEvolutionApiUrl] = useState(() => localStorage.getItem('raffa_evolution_api_url') || '');
+  const [evolutionInstance, setEvolutionInstance] = useState(() => localStorage.getItem('raffa_evolution_instance') || '');
+  const [evolutionApiKey, setEvolutionApiKey] = useState(() => localStorage.getItem('raffa_evolution_api_key') || '');
+  const [evolutionNotificationTemplate, setEvolutionNotificationTemplate] = useState(() => localStorage.getItem('raffa_evolution_notification_tpl') || DEFAULT_EVOLUTION_NOTIFICATION_TEMPLATE);
+  const [showEvolutionApiKey, setShowEvolutionApiKey] = useState(false);
+  const [evolutionTestStatus, setEvolutionTestStatus] = useState(null);
 
   // Company Profile Settings for Invoices
   const [companyInfo, setCompanyInfo] = useState(() => {
@@ -438,6 +456,41 @@ function App() {
       setSmtpTestStatus({
         type: 'error',
         text: `Falha ao autenticar no servidor SMTP: ${err.message}`
+      });
+    }
+  };
+
+  const handleSaveAndTestEvolution = async () => {
+    if (!evolutionApiUrl.trim()) {
+      setEvolutionTestStatus({ type: 'error', text: 'Por favor, informe a URL da Evolution API (ex: https://api.meudominio.com.br).' });
+      return;
+    }
+    if (!evolutionInstance.trim() || !evolutionApiKey.trim()) {
+      setEvolutionTestStatus({ type: 'error', text: 'Por favor, preencha o Nome da Instância e a API Key (Token).' });
+      return;
+    }
+
+    localStorage.setItem('raffa_evolution_api_url', evolutionApiUrl.trim());
+    localStorage.setItem('raffa_evolution_instance', evolutionInstance.trim());
+    localStorage.setItem('raffa_evolution_api_key', evolutionApiKey.trim());
+    localStorage.setItem('raffa_evolution_notification_tpl', evolutionNotificationTemplate);
+
+    setEvolutionTestStatus({ type: 'info', text: 'Consultando status da instância na Evolution API em tempo real...' });
+
+    try {
+      const res = await testEvolutionConnection({
+        serverUrl: evolutionApiUrl.trim(),
+        instance: evolutionInstance.trim(),
+        apiKey: evolutionApiKey.trim()
+      });
+      setEvolutionTestStatus({
+        type: 'success',
+        text: `✓ ${res.message || 'Instância conectada com sucesso ao WhatsApp!'}`
+      });
+    } catch (err) {
+      setEvolutionTestStatus({
+        type: 'error',
+        text: `Falha ao conectar com a Evolution API: ${err.message}`
       });
     }
   };
@@ -1267,6 +1320,7 @@ function App() {
               categories={serviceCategories}
               freelancerEmailSubjectTemplate={freelancerEmailSubjectTemplate}
               freelancerEmailBodyTemplate={freelancerEmailBodyTemplate}
+              evolutionNotificationTemplate={evolutionNotificationTemplate}
               onAddCategory={handleAddCategory}
               onAddFreelancer={handleAddFreelancer}
               onUpdateFreelancer={handleUpdateFreelancer}
@@ -2041,6 +2095,197 @@ function App() {
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{data_pagamento}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{lista_demandas}'}</span>
                       <span className="bg-white border border-gray-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-800">{'{minha_empresa}'}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 italic mt-1 border-t border-gray-200/60 pt-1.5">
+                      💡 <strong>Suporta HTML & Texto:</strong> Tags como &lt;b&gt;, &lt;p&gt;, &lt;br&gt;, &lt;a&gt; e listas são suportadas. Texto simples com quebras de linha e tópicos com marcadores (•) também são diagramados automaticamente com tipografia corporativa e espaçamento seguro para anexos PDF.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Evolution API (WhatsApp) Card */}
+                <div className="bg-white border border-emerald-200 rounded-xl p-6 shadow-xs flex flex-col gap-5 md:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                    <div>
+                      <h3 className="font-title text-base font-bold text-gray-900 flex items-center gap-2">
+                        <MessageSquare size={18} className="text-emerald-600" />
+                        <span>Integração Evolution API (WhatsApp) & Notificações de Demandas</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                        Conecte sua instância da Evolution API para notificar automaticamente prestadores e freelancers sobre novas demandas delegadas diretamente no WhatsApp.
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                      <Smartphone size={12} />
+                      <span>WhatsApp API</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left: Credenciais da API */}
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-gray-700" htmlFor="evo-url">
+                          URL da Evolution API (Servidor)
+                        </label>
+                        <input 
+                          id="evo-url"
+                          type="url"
+                          placeholder="ex: https://whatsapp.meudominio.com.br ou http://meu-vps:8080"
+                          className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-emerald-500 bg-white font-mono"
+                          value={evolutionApiUrl}
+                          onChange={(e) => {
+                            setEvolutionApiUrl(e.target.value);
+                            localStorage.setItem('raffa_evolution_api_url', e.target.value);
+                          }}
+                        />
+                        <span className="text-[10px] text-gray-400">Endereço base onde sua Evolution API está hospedada.</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-gray-700" htmlFor="evo-instance">
+                            Nome da Instância
+                          </label>
+                          <input 
+                            id="evo-instance"
+                            type="text"
+                            placeholder="ex: atendimento ou timesheet"
+                            className="border border-gray-200 rounded-lg p-2.5 text-xs focus:outline-none focus:border-emerald-500 bg-white font-mono"
+                            value={evolutionInstance}
+                            onChange={(e) => {
+                              setEvolutionInstance(e.target.value);
+                              localStorage.setItem('raffa_evolution_instance', e.target.value);
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-gray-700" htmlFor="evo-key">
+                            API Key / Token
+                          </label>
+                          <div className="relative">
+                            <input 
+                              id="evo-key"
+                              type={showEvolutionApiKey ? 'text' : 'password'}
+                              placeholder="Chave Global ou da Instância"
+                              className="w-full border border-gray-200 rounded-lg p-2.5 pr-8 text-xs focus:outline-none focus:border-emerald-500 bg-white font-mono"
+                              value={evolutionApiKey}
+                              onChange={(e) => {
+                                setEvolutionApiKey(e.target.value);
+                                localStorage.setItem('raffa_evolution_api_key', e.target.value);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowEvolutionApiKey(!showEvolutionApiKey)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                              title={showEvolutionApiKey ? 'Ocultar chave' : 'Visualizar chave'}
+                            >
+                              {showEvolutionApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status da conexão */}
+                      {evolutionTestStatus && (
+                        <div className={`p-3 rounded-lg text-xs flex items-start gap-2 ${
+                          evolutionTestStatus.type === 'success' 
+                            ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' 
+                            : evolutionTestStatus.type === 'info'
+                            ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                            : 'bg-red-50 text-red-800 border border-red-200'
+                        }`}>
+                          {evolutionTestStatus.type === 'success' ? (
+                            <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                          ) : evolutionTestStatus.type === 'info' ? (
+                            <RefreshCw size={16} className="animate-spin text-blue-600 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                          )}
+                          <span>{evolutionTestStatus.text}</span>
+                        </div>
+                      )}
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleSaveAndTestEvolution}
+                          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-xs active:scale-[0.98]"
+                        >
+                          <Save size={14} />
+                          <span>Salvar e Testar Instância da Evolution API</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right: Template de Mensagem de Nova Demanda */}
+                    <div className="flex flex-col justify-between gap-3 bg-emerald-50/40 border border-emerald-150 p-4 rounded-xl">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-gray-900 flex items-center gap-1.5" htmlFor="evo-tpl">
+                            <MessageCircle size={14} className="text-emerald-600" />
+                            <span>Template de Notificação de Nova Demanda</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEvolutionNotificationTemplate(DEFAULT_EVOLUTION_NOTIFICATION_TEMPLATE);
+                              localStorage.setItem('raffa_evolution_notification_tpl', DEFAULT_EVOLUTION_NOTIFICATION_TEMPLATE);
+                            }}
+                            className="text-[10px] text-emerald-700 hover:underline cursor-pointer font-semibold"
+                          >
+                            Restaurar Padrão
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                          Esta mensagem será disparada para o WhatsApp do prestador quando você clicar no botão de notificar na tabela de demandas ou logo após cadastrar uma nova tarefa.
+                        </p>
+
+                        <textarea 
+                          id="evo-tpl"
+                          rows={7}
+                          className="border border-gray-200 rounded-lg p-3 text-xs leading-relaxed focus:outline-none focus:border-emerald-500 bg-white font-mono"
+                          value={evolutionNotificationTemplate}
+                          onChange={(e) => {
+                            setEvolutionNotificationTemplate(e.target.value);
+                            localStorage.setItem('raffa_evolution_notification_tpl', e.target.value);
+                          }}
+                        />
+                      </div>
+
+                      <div className="bg-white/90 border border-emerald-150 p-2.5 rounded-lg flex flex-col gap-1.5 text-xs">
+                        <span className="font-bold text-gray-700 text-[10px] uppercase tracking-wider">Variáveis Dinâmicas (Clique para Inserir):</span>
+                        <div className="flex flex-wrap gap-1 text-[10px]">
+                          {[
+                            { tag: '{primeiro_nome}', desc: 'Primeiro nome do prestador' },
+                            { tag: '{nome}', desc: 'Nome completo' },
+                            { tag: '{titulo}', desc: 'Título da demanda' },
+                            { tag: '{cliente}', desc: 'Nome do cliente' },
+                            { tag: '{categoria}', desc: 'Categoria do serviço' },
+                            { tag: '{prazo}', desc: 'Data prevista de entrega' },
+                            { tag: '{horas}', desc: 'Estimativa de horas' },
+                            { tag: '{link_briefing_bloco}', desc: 'Link do briefing (se houver)' },
+                            { tag: '{observacoes_bloco}', desc: 'Observações (se houver)' },
+                            { tag: '{portal_url}', desc: 'Link de acesso ao painel' },
+                            { tag: '{minha_empresa}', desc: 'Sua empresa' }
+                          ].map(({ tag, desc }) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => {
+                                const next = evolutionNotificationTemplate + ' ' + tag;
+                                setEvolutionNotificationTemplate(next);
+                                localStorage.setItem('raffa_evolution_notification_tpl', next);
+                              }}
+                              title={`Inserir: ${desc}`}
+                              className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-900 cursor-pointer transition-colors"
+                            >
+                              {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

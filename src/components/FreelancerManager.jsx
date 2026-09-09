@@ -34,7 +34,10 @@ import {
   Layers,
   FileSpreadsheet,
   RefreshCw,
-  FileText
+  FileText,
+  MessageSquare,
+  Smartphone,
+  MessageCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -42,6 +45,12 @@ import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
 import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType } from '../utils/asaasIntegration';
 import { generatePayrollPdf } from '../utils/pdfGenerator';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
+import { 
+  buildDemandNotificationText, 
+  sendEvolutionWhatsApp, 
+  openWhatsAppWebDirect, 
+  isEvolutionConfigured 
+} from '../utils/evolutionService';
 
 const CATEGORIES = [
   'Digital',
@@ -251,6 +260,7 @@ export default function FreelancerManager({
   categories = [],
   freelancerEmailSubjectTemplate,
   freelancerEmailBodyTemplate,
+  evolutionNotificationTemplate,
   onAddCategory,
   onAddFreelancer,
   onUpdateFreelancer,
@@ -344,11 +354,22 @@ export default function FreelancerManager({
   const [freelancerEmailSuccess, setFreelancerEmailSuccess] = useState(false);
   const [directEmailSentSuccess, setDirectEmailSentSuccess] = useState(false);
 
+  // WhatsApp Evolution Notification Modal State
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+  const [notifyingTask, setNotifyingTask] = useState(null);
+  const [notifyRecipientPhone, setNotifyRecipientPhone] = useState('');
+  const [notifyMessageText, setNotifyMessageText] = useState('');
+  const [isSendingNotification, setIsSendingNotification] = useState(false);
+  const [notificationSuccess, setNotificationSuccess] = useState(false);
+  const [notificationError, setNotificationError] = useState('');
+  const [notifyOnCreate, setNotifyOnCreate] = useState(false);
+
   // Fechar qualquer modal ativo ao pressionar tecla Escape
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        if (isFreelancerEmailModalOpen) setIsFreelancerEmailModalOpen(false);
+        if (isNotifyModalOpen) setIsNotifyModalOpen(false);
+        else if (isFreelancerEmailModalOpen) setIsFreelancerEmailModalOpen(false);
         else if (viewingReceiptTask) setViewingReceiptTask(null);
         else if (pixSuccessData) setPixSuccessData(null);
         else if (isPixPaymentModalOpen && !isSubmittingPix) setIsPixPaymentModalOpen(false);
@@ -359,7 +380,7 @@ export default function FreelancerManager({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFreelancerEmailModalOpen, viewingReceiptTask, pixSuccessData, isPixPaymentModalOpen, isSubmittingPix, isBatchModalOpen, isFreelancerModalOpen, isTaskModalOpen]);
+  }, [isNotifyModalOpen, isFreelancerEmailModalOpen, viewingReceiptTask, pixSuccessData, isPixPaymentModalOpen, isSubmittingPix, isBatchModalOpen, isFreelancerModalOpen, isTaskModalOpen]);
 
   // Form states - Task
   const [taskForm, setTaskForm] = useState({
@@ -1199,6 +1220,59 @@ export default function FreelancerManager({
     setIsTaskModalOpen(true);
   };
 
+  const handleOpenNotifyTaskModal = (task) => {
+    if (!task) return;
+    const freela = freelancers.find(f => f.id === task.freelancerId);
+    const cName = getClientName(task.clientId);
+    const msg = buildDemandNotificationText({
+      template: evolutionNotificationTemplate,
+      task,
+      freelancer: freela,
+      clientName: cName,
+      companyInfo
+    });
+
+    setNotifyingTask(task);
+    setNotifyRecipientPhone(freela?.phone || '');
+    setNotifyMessageText(msg);
+    setNotificationSuccess(false);
+    setNotificationError('');
+    setIsSendingNotification(false);
+    setIsNotifyModalOpen(true);
+  };
+
+  const handleSendNotificationViaEvolution = async () => {
+    if (!notifyRecipientPhone.trim()) {
+      alert('Por favor, informe o número de WhatsApp do destinatário.');
+      return;
+    }
+    if (!notifyMessageText.trim()) {
+      alert('A mensagem de notificação não pode ficar vazia.');
+      return;
+    }
+
+    setIsSendingNotification(true);
+    setNotificationError('');
+    try {
+      await sendEvolutionWhatsApp({
+        number: notifyRecipientPhone.trim(),
+        text: notifyMessageText.trim()
+      });
+      setNotificationSuccess(true);
+    } catch (err) {
+      setNotificationError(err.message || 'Erro ao disparar mensagem pela Evolution API.');
+    } finally {
+      setIsSendingNotification(false);
+    }
+  };
+
+  const handleOpenWhatsAppWebFallback = () => {
+    openWhatsAppWebDirect({
+      phone: notifyRecipientPhone,
+      text: notifyMessageText
+    });
+  };
+
   const handleSaveTask = async (e) => {
     e.preventDefault();
     if (!taskForm.title.trim()) {
@@ -1219,12 +1293,21 @@ export default function FreelancerManager({
       hours: parseFloat(String(taskForm.hours).replace(',', '.')) || 0
     };
 
+    const isNew = !editingTask;
+    let created = null;
+
     if (editingTask) {
       await onUpdateTask({ ...editingTask, ...payload });
     } else {
-      await onAddTask(payload);
+      created = await onAddTask(payload);
     }
     setIsTaskModalOpen(false);
+
+    // Se o usuário marcou para notificar o prestador ao cadastrar
+    if (isNew && notifyOnCreate) {
+      const taskToNotify = created || { ...payload, id: `task-temp-${Date.now()}` };
+      handleOpenNotifyTaskModal(taskToNotify);
+    }
   };
 
   // Handlers de Freelancers
@@ -1823,6 +1906,16 @@ export default function FreelancerManager({
 
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Botão Notificar WhatsApp (Evolution API) */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenNotifyTaskModal(task)}
+                                className="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                                title="Notificar Prestador via WhatsApp (Evolution API)"
+                              >
+                                <MessageSquare size={13} />
+                              </button>
+
                               <button
                                 onClick={() => handleOpenEditTaskModal(task)}
                                 className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
@@ -2567,6 +2660,29 @@ export default function FreelancerManager({
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900/10 focus:bg-white text-gray-900"
                 />
               </div>
+
+              {!editingTask && (
+                <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
+                      <MessageSquare size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-900">Notificar Prestador via WhatsApp</p>
+                      <p className="text-[11px] text-gray-500">Abrir tela de disparo da notificação automaticamente após salvar esta demanda.</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input 
+                      type="checkbox" 
+                      checked={notifyOnCreate} 
+                      onChange={(e) => setNotifyOnCreate(e.target.checked)} 
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
                 <button
@@ -3397,6 +3513,208 @@ export default function FreelancerManager({
                         <>
                           <Send size={14} />
                           <span>Enviar Direto (SMTP)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* MODAL: NOTIFICAR DEMANDA VIA WHATSAPP (EVOLUTION API)                */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {isNotifyModalOpen && notifyingTask && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsNotifyModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in-0 zoom-in-95 flex flex-col gap-4 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-200">
+                  <MessageSquare size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-950">Notificar Prestador via WhatsApp</h3>
+                  <p className="text-xs text-gray-500">Envie os detalhes da demanda delegada diretamente para o WhatsApp do prestador.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsNotifyModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {notificationSuccess ? (
+              <div className="flex flex-col items-center justify-center py-6 px-2 gap-3 text-center animate-in fade-in-0 zoom-in-95">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                  <CheckCircle2 size={30} />
+                </div>
+                <div>
+                  <h3 className="font-title text-base font-bold text-gray-950">
+                    Notificação Enviada com Sucesso!
+                  </h3>
+                  <p className="text-xs text-gray-600 mt-1 max-w-md">
+                    A mensagem com as instruções da demanda foi transmitida via WhatsApp através da Evolution API.
+                  </p>
+                </div>
+                <div className="text-[11px] text-gray-600 bg-gray-50 border border-gray-200 px-3.5 py-1.5 rounded-xl">
+                  Destinatário: <strong>{notifyRecipientPhone}</strong>
+                </div>
+                <div className="flex items-center justify-center gap-2 mt-2 pt-3 border-t border-gray-100 w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNotifyModalOpen(false);
+                      setNotificationSuccess(false);
+                    }}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs cursor-pointer"
+                  >
+                    Concluir
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Card Resumo da Demanda */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-col gap-2 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-gray-900 text-sm">{notifyingTask.title}</span>
+                      <div className="flex items-center gap-2 text-gray-500 text-[11px] mt-0.5">
+                        <span>Cliente: <strong className="text-gray-700">{getClientName(notifyingTask.clientId)}</strong></span>
+                        <span>•</span>
+                        <span>Categoria: <strong className="text-gray-700">{notifyingTask.category || 'Digital'}</strong></span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                      Prazo: {formatDateBR(notifyingTask.expectedDueDate) || 'A definir'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Erro se houver */}
+                {notificationError && (
+                  <div className="bg-red-50 text-red-800 border border-red-200 p-3 rounded-xl text-xs flex items-start gap-2">
+                    <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-0.5">
+                      <strong className="text-red-900">Falha no disparo da notificação:</strong>
+                      <span>{notificationError}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Campo de Telefone */}
+                <div className="flex flex-col gap-1">
+                  <label className="font-bold text-xs text-gray-700 flex items-center justify-between">
+                    <span>WhatsApp do Prestador:</span>
+                    <span className="text-[10px] text-gray-400 font-normal">Formato com DDD (ex: 11 99999-9999)</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-600">
+                      <Smartphone size={15} />
+                    </div>
+                    <input 
+                      type="text"
+                      value={notifyRecipientPhone}
+                      onChange={(e) => setNotifyRecipientPhone(e.target.value)}
+                      placeholder="(DDD) 99999-9999"
+                      className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Mensagem editável */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-xs text-gray-700">Mensagem da Notificação:</label>
+                    <span className="text-[10px] text-gray-400">Você pode ajustar o texto antes de enviar</span>
+                  </div>
+                  <textarea 
+                    rows={7}
+                    value={notifyMessageText}
+                    onChange={(e) => setNotifyMessageText(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-mono leading-relaxed text-gray-900 focus:outline-none focus:border-emerald-600 focus:bg-white"
+                  />
+                </div>
+
+                {/* Status da Evolution API */}
+                <div className={`p-2.5 rounded-xl text-[11px] flex items-center justify-between gap-2 ${
+                  isEvolutionConfigured() 
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-950' 
+                    : 'bg-amber-50 border border-amber-200 text-amber-950'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {isEvolutionConfigured() ? (
+                      <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                    )}
+                    <span>
+                      {isEvolutionConfigured() 
+                        ? 'Evolution API configurada e pronta para disparo automático.' 
+                        : 'Evolution API não configurada. Você pode configurá-la em Configurações ou enviar direto pelo WhatsApp Web.'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Botões de Ação */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(notifyMessageText);
+                      alert('Mensagem copiada para a área de transferência!');
+                    }}
+                    className="w-full sm:w-auto px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Copy size={13} />
+                    <span>Copiar Texto</span>
+                  </button>
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsNotifyModalOpen(false)}
+                      className="px-3 py-2 text-gray-600 hover:bg-gray-100 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenWhatsAppWebFallback}
+                      className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      title="Abrir diretamente conversa no WhatsApp Web com o texto pré-preenchido"
+                    >
+                      <MessageCircle size={14} className="text-emerald-700" />
+                      <span>WhatsApp Web</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSendNotificationViaEvolution}
+                      disabled={isSendingNotification || !notifyRecipientPhone.trim()}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isSendingNotification ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Disparando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send size={14} />
+                          <span>Enviar via Evolution API</span>
                         </>
                       )}
                     </button>
