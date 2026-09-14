@@ -45,6 +45,7 @@ import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
 import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType } from '../utils/asaasIntegration';
 import { generatePayrollPdf } from '../utils/pdfGenerator';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
+import PrivacyToggle from './PrivacyToggle';
 import { 
   buildDemandNotificationText, 
   sendEvolutionWhatsApp, 
@@ -1468,7 +1469,7 @@ export default function FreelancerManager({
   return (
     <div className="flex flex-col gap-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="font-title text-2xl font-black text-gray-950 flex items-center gap-2.5">
             <Briefcase className="text-yellow-600" size={24} />
@@ -1479,8 +1480,11 @@ export default function FreelancerManager({
           </p>
         </div>
 
-        {/* SubTab Navigation */}
-        <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl self-start sm:self-center border border-gray-200">
+        <div className="flex flex-wrap items-center gap-3">
+          <PrivacyToggle />
+
+          {/* SubTab Navigation */}
+          <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl self-start sm:self-center border border-gray-200">
           <button
             onClick={() => setActiveSubTab('tasks')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -1515,6 +1519,7 @@ export default function FreelancerManager({
             <span>Fechamento & Pagamentos</span>
           </button>
         </div>
+      </div>
       </div>
 
       {/* ═════════════════════════════════════════════════════════════════════ */}
@@ -1615,8 +1620,8 @@ export default function FreelancerManager({
                 {selectedTasksFreelancer && (
                   <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-300 bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800 font-medium">
                     <span>{selectedTasksFreelancer.name}:</span>
-                    <span className="font-bold text-emerald-400 font-title">{formatCurrency(selectedTasksTotalAmount)}</span>
-                    <span className="text-[10px] text-gray-400">({formatCurrency(selectedTasksFreelancer.hourlyRate)}/h)</span>
+                    <span className="font-bold text-emerald-400 font-title privacy-money">{formatCurrency(selectedTasksTotalAmount)}</span>
+                    <span className="text-[10px] text-gray-400 privacy-money">({formatCurrency(selectedTasksFreelancer.hourlyRate)}/h)</span>
                   </div>
                 )}
               </div>
@@ -1839,7 +1844,7 @@ export default function FreelancerManager({
                           <td className="py-3 px-4 text-gray-700">
                             <span className="flex items-center gap-1.5">
                               <Building size={12} className="text-gray-400 shrink-0" />
-                              <span>{clientName}</span>
+                              <span className="privacy-client">{clientName}</span>
                             </span>
                           </td>
 
@@ -2014,7 +2019,7 @@ export default function FreelancerManager({
                           <span className="text-gray-500 flex items-center gap-1">
                             <DollarSign size={12} /> Valor por Hora:
                           </span>
-                          <span className="font-black text-gray-950 font-title">{formatCurrency(freela.hourlyRate)}/h</span>
+                          <span className="font-black text-gray-950 font-title privacy-money">{formatCurrency(freela.hourlyRate)}/h</span>
                         </div>
                         {freela.pixKey && (
                           <div className="flex justify-between items-center">
@@ -2339,7 +2344,7 @@ export default function FreelancerManager({
                     ? 'Total a Pagar / Quitado' 
                     : 'Total a Pagar aos Prestadores'}
                 </span>
-                <span className={`text-2xl font-black font-title ${payrollData.isAllPaid ? 'text-emerald-950' : 'text-yellow-950'}`}>
+                <span className={`text-2xl font-black font-title privacy-money ${payrollData.isAllPaid ? 'text-emerald-950' : 'text-yellow-950'}`}>
                   {formatCurrency(payrollData.totalAmountToPay)}
                 </span>
                 {payrollData.isAllPaid && payrollData.paymentDates.length > 0 && (
@@ -2368,7 +2373,7 @@ export default function FreelancerManager({
                     return (
                       <div key={item.name} className="flex flex-col gap-1 text-xs">
                         <div className="flex justify-between font-medium text-gray-800">
-                          <span>{item.name}</span>
+                          <span className="privacy-client">{item.name}</span>
                           <span className="font-bold">{item.hours.toFixed(1).replace('.', ',')}h ({percentage.toFixed(0)}%)</span>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
@@ -2451,12 +2456,12 @@ export default function FreelancerManager({
                         <tr key={t.id} className="hover:bg-yellow-50/20">
                           <td className="py-2.5 px-4 font-bold text-gray-900">{t.title}</td>
                           <td className="py-2.5 px-4 text-gray-700">{freela ? freela.name : 'Não Atribuído'}</td>
-                          <td className="py-2.5 px-4 text-gray-700">{getClientName(t.clientId)}</td>
+                          <td className="py-2.5 px-4 text-gray-700 privacy-client">{getClientName(t.clientId)}</td>
                           <td className="py-2.5 px-4 text-gray-600">{t.category}</td>
                           <td className="py-2.5 px-4 text-gray-500 font-mono text-[11px]">{formatDateBR(t.requestDate)}</td>
                           <td className="py-2.5 px-4 text-green-700 font-mono text-[11px] font-bold">{formatDateBR(t.actualDeliveryDate)}</td>
                           <td className="py-2.5 px-4 text-center font-bold">{parseFloat(t.hours).toFixed(1).replace('.', ',')}h</td>
-                          <td className="py-2.5 px-4 text-right font-black text-gray-950 font-title">{formatCurrency(subtotal)}</td>
+                          <td className="py-2.5 px-4 text-right font-black text-gray-950 font-title privacy-money">{formatCurrency(subtotal)}</td>
                           <td className="py-2.5 px-4 text-center">
                             <div className="inline-flex items-center justify-center gap-1">
                               <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -3250,7 +3255,7 @@ export default function FreelancerManager({
               <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-1.5">
                 <span className="text-gray-400 font-bold text-[10px] uppercase">Demanda</span>
                 <span className="font-bold text-gray-900 text-sm">{viewingReceiptTask.title}</span>
-                <span className="text-gray-500">Cliente: {getClientName(viewingReceiptTask.clientId)}</span>
+                <span className="text-gray-500">Cliente: <span className="privacy-client">{getClientName(viewingReceiptTask.clientId)}</span></span>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -3271,7 +3276,7 @@ export default function FreelancerManager({
                     Data: {formatDateBR(viewingReceiptTask.paymentDate || viewingReceiptTask.actualDeliveryDate)}
                   </span>
                 </div>
-                <span className="text-lg font-black text-emerald-950 font-title">
+                <span className="text-lg font-black text-emerald-950 font-title privacy-money">
                   {formatCurrency(viewingReceiptTask.paymentValue || ((parseFloat(viewingReceiptTask.hours) || 0) * (getFreelancer(viewingReceiptTask.freelancerId)?.hourlyRate || 0)))}
                 </span>
                 {viewingReceiptTask.paymentId && (

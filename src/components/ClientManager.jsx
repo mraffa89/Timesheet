@@ -3,6 +3,7 @@ import { Plus, Edit3, Trash2, Mail, Clock, DollarSign, X, Search, Phone, Buildin
 import { fetchAsaasCustomerByCnpj, syncAllAsaasClients } from '../utils/asaasIntegration';
 import { formatCpfCnpj, formatPhone, fetchPublicCnpjData } from '../utils/cnpjLookup';
 import ClientModal from './ClientModal';
+import PrivacyToggle from './PrivacyToggle';
 
 export default function ClientManager({ clients, onAddClient, onUpdateClient, onDeleteClient, onSyncClients, onMergeClients }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -374,6 +375,8 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
         </div>
         
         <div className="flex flex-wrap items-center gap-2.5">
+          <PrivacyToggle />
+
           <button 
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
             onClick={handleSyncAllAsaas}
@@ -553,12 +556,12 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                     </td>
                     <td className="py-3.5 px-4 font-bold text-gray-900">
                       <div className="flex items-center gap-2.5">
-                        <div className={`w-7 h-7 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                        <div className={`w-7 h-7 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 privacy-client ${
                           isClientActive ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-200 text-gray-500'
                         }`}>
                           {initials}
                         </div>
-                        <span>{client.name}</span>
+                        <span className="privacy-client">{client.name}</span>
                       </div>
                     </td>
                     <td className="py-3.5 px-4 font-mono text-gray-600 whitespace-nowrap">
@@ -568,7 +571,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                       <div className="flex flex-col">
                         <span className="font-semibold text-gray-900">{getContractTypeName(client.contractType)}</span>
                         {client.contractType !== 'hourly' && (
-                          <span className="text-[10px] text-gray-500">Fee: {formatCurrency(client.fixedFee)}</span>
+                          <span className="text-[10px] text-gray-500 privacy-money">Fee: {formatCurrency(client.fixedFee)}</span>
                         )}
                       </div>
                     </td>
@@ -621,7 +624,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                 {/* Header card info */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    <div className={`flex items-center justify-center w-10 h-10 rounded-lg font-bold font-title text-sm shrink-0 border ${
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold font-title text-xs shrink-0 border privacy-client ${
                       isClientActive 
                         ? "bg-yellow-50 border-yellow-100 text-yellow-600" 
                         : "bg-gray-200 border-gray-300 text-gray-500"
@@ -630,7 +633,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className={`text-sm font-semibold ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
+                        <h4 className={`text-sm font-semibold privacy-client ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
                           {client.name}
                         </h4>
                         {isClientActive ? (
@@ -700,7 +703,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                   {client.contractType !== 'hourly' && (
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider">Fee Mensal Fixo</span>
-                      <span className={`text-xs font-bold flex items-center gap-1 ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
+                      <span className={`text-xs font-bold flex items-center gap-1 privacy-money ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
                         <DollarSign size={12} className="text-gray-400" /> {formatCurrency(client.fixedFee)}
                       </span>
                     </div>
@@ -718,7 +721,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                       <span className="text-[9px] text-gray-400 font-semibold uppercase tracking-wider">
                         {client.contractType === 'hybrid' ? 'Hora Extra' : 'Valor da Hora'}
                       </span>
-                      <span className={`text-xs font-bold flex items-center gap-1 ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
+                      <span className={`text-xs font-bold flex items-center gap-1 privacy-money ${isClientActive ? 'text-gray-900' : 'text-gray-600'}`}>
                         <DollarSign size={12} className="text-gray-400" /> {formatCurrency(client.hourlyRate)}/h
                       </span>
                     </div>

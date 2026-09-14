@@ -81,3 +81,26 @@ dialog::backdrop {
     background-color: #ffffff !important;
   }
 }
+
+/* Privacy Blur (Modo Sigilo) */
+.privacy-blur,
+.privacy-client,
+.privacy-money {
+  transition: filter 0.2s ease-in-out;
+}
+
+.privacy-mode-active .privacy-blur,
+.privacy-mode-active .privacy-client,
+.privacy-mode-active .privacy-money {
+  filter: blur(5.5px) !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Efeito para selects e inputs nativos quando em modo sigilo */
+.privacy-mode-active select.privacy-client,
+.privacy-mode-active select.privacy-blur {
+  color: transparent !important;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.5) !important;
+}
+

@@ -22,6 +22,7 @@ import { createAsaasBilling, attachDocumentToAsaasPayment } from '../utils/asaas
 import { generateInvoicePdf } from '../utils/pdfGenerator';
 import { formatCpfCnpj, formatPhone } from '../utils/cnpjLookup';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
+import PrivacyToggle from './PrivacyToggle';
 
 const groupEntriesByDescription = (entriesList) => {
   const map = new Map();
@@ -726,7 +727,9 @@ Atenciosamente,
           <p className="text-sm text-gray-500">Gere faturas comerciais e demonstrativos de serviços (exportação em PDF 100% preto/cinza).</p>
         </div>
         
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <PrivacyToggle />
+
           <button 
             className="flex items-center gap-1.5 px-4 py-2 bg-yellow-400 text-gray-950 rounded-lg text-xs font-extrabold hover:bg-yellow-500 shadow-xs transition-all cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed" 
             onClick={handleGeneratePdf} 
@@ -765,7 +768,7 @@ Atenciosamente,
           </div>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-white border border-gray-200 rounded-lg py-1.5 px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:border-yellow-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed privacy-client"
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
             disabled={filteredClients.length === 0}
@@ -888,11 +891,11 @@ Atenciosamente,
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                   {/* Left: Name, CNPJ, Address */}
                   <div className="flex flex-col gap-1 flex-grow">
-                    <h4 className="text-base font-extrabold text-gray-950 leading-tight">{client.name}</h4>
+                    <h4 className="text-base font-extrabold text-gray-950 leading-tight privacy-client">{client.name}</h4>
                     
                     {client.cnpj && (
                       <p className="font-mono text-xs text-gray-600">
-                        CNPJ / CPF: <span className="text-gray-900 font-semibold">{formatCpfCnpj(client.cnpj)}</span>
+                        CNPJ / CPF: <span className="text-gray-900 font-semibold privacy-client">{formatCpfCnpj(client.cnpj)}</span>
                       </p>
                     )}
                     {client.address && (
@@ -1107,13 +1110,13 @@ Atenciosamente,
                         {financials.hourlyRate > 0 && (
                           <div className="flex justify-between items-center text-gray-500 text-[11px]">
                             <span>Valor por Hora:</span>
-                            <span>{formatCurrency(financials.hourlyRate)}/h</span>
+                            <span className="privacy-money">{formatCurrency(financials.hourlyRate)}/h</span>
                           </div>
                         )}
 
                         <div className="flex justify-between items-center border-t border-gray-200 pt-3 text-sm font-bold text-gray-950">
                           <span>Valor Total Faturado:</span>
-                          <span className="text-gray-950 font-title text-xl font-black">{formatCurrency(financials.totalAmount)}</span>
+                          <span className="text-gray-950 font-title text-xl font-black privacy-money">{formatCurrency(financials.totalAmount)}</span>
                         </div>
                       </div>
                     </div>

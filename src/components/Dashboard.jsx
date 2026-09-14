@@ -19,6 +19,7 @@ import {
   ArrowUp
 } from 'lucide-react';
 import ClientModal from './ClientModal';
+import PrivacyToggle from './PrivacyToggle';
 
 export default function Dashboard({ entries = [], clients = [], onNavigateToTab, onUpdateClient, onDeleteClient, onMergeClients }) {
   // 1. Filtro de Período exclusivo ('current_month', 'prev_month', 'select_month')
@@ -501,10 +502,13 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
       
       {/* 1. Cabeçalho com Título, Filtro de Período e Barra de Ordenação */}
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="font-title text-2xl font-bold text-gray-900">Visão Geral</h1>
             <p className="text-sm text-gray-500">Métricas consolidadas de faturamento, esforço e rentabilidade por cliente.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <PrivacyToggle />
           </div>
         </div>
 
@@ -642,9 +646,9 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
             </div>
           </div>
           <div className="flex flex-col">
-            <span className="text-xl font-bold font-title text-gray-900 leading-none">{formatCurrency(stats.estimatedBilling)}</span>
+            <span className="text-xl font-bold font-title text-gray-900 leading-none privacy-money">{formatCurrency(stats.estimatedBilling)}</span>
             <span className="text-[10px] text-gray-400 font-semibold mt-1">
-              Sendo <strong className="text-yellow-600">{formatCurrency(stats.variableBilling)}</strong> faturamento extra
+              Sendo <strong className="text-yellow-600 privacy-money">{formatCurrency(stats.variableBilling)}</strong> faturamento extra
             </span>
           </div>
           <span className="text-[10px] text-yellow-600 font-semibold cursor-pointer flex items-center gap-0.5 mt-1" onClick={() => onNavigateToTab('reports')}>
@@ -789,7 +793,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                     top: '-15px'
                   }}
                 >
-                  <div className="font-bold text-sm text-yellow-400">
+                  <div className="font-bold text-sm text-yellow-400 privacy-client">
                     {hoveredClientChart.client.name} ({hoveredClientChart.client.initials})
                   </div>
                   <div className="flex items-center justify-between gap-4 text-gray-300">
@@ -801,7 +805,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                   </div>
                   <div className="flex items-center justify-between gap-4 text-yellow-500 font-semibold border-t border-gray-800 pt-1 mt-0.5">
                     <span>Faturamento:</span>
-                    <span>{formatCurrency(hoveredClientChart.client.billing)}</span>
+                    <span className="privacy-money">{formatCurrency(hoveredClientChart.client.billing)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-4 text-indigo-300">
                     <span>Média Histórica:</span>
@@ -942,7 +946,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                       fontSize="11" 
                       fill={isHovered ? "#0f172a" : "#475569"} 
                       fontWeight="bold"
-                      className="transition-colors font-title"
+                      className="transition-colors font-title privacy-client"
                     >
                       {coord.client.initials}
                     </text>
@@ -1088,11 +1092,11 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                         className="flex items-center justify-center w-9 h-9 bg-gray-50 hover:bg-yellow-100 hover:border-yellow-400 border border-gray-200 rounded-xl text-gray-800 font-bold font-title text-xs shrink-0 cursor-pointer transition-all shadow-2xs group"
                         title={`Clique para visualizar ou editar o cadastro de ${c.clientName}`}
                       >
-                        <span className="group-hover:text-yellow-800 transition-colors">{c.initials}</span>
+                        <span className="group-hover:text-yellow-800 transition-colors privacy-client">{c.initials}</span>
                       </button>
                       <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-gray-900 leading-tight">{c.clientName}</span>
+                          <span className="text-sm font-bold text-gray-900 leading-tight privacy-client">{c.clientName}</span>
                           {!c.isActive && (
                             <span className="text-[9px] font-bold px-1.5 py-0.2 bg-gray-100 text-gray-500 rounded border border-gray-200">
                               Inativo
@@ -1120,10 +1124,10 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
 
                     {/* Previsão de Faturamento Total (Fixo + Extra) */}
                     <div className="text-left sm:text-right sm:ml-auto">
-                      <div className="text-sm font-black text-yellow-600">
+                      <div className="text-sm font-black text-yellow-600 privacy-money">
                         {formatCurrency(c.billing)}
                       </div>
-                      <span className="text-[10px] text-gray-400 font-medium">
+                      <span className="text-[10px] text-gray-400 font-medium privacy-money">
                         {c.variableBilling > 0 && c.fixedBilling > 0 
                           ? `${formatCurrency(c.fixedBilling)} fixo + ${formatCurrency(c.variableBilling)} extra` 
                           : c.variableBilling > 0
@@ -1147,7 +1151,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                     {/* Taxa Efetiva & Badge de Status */}
                     <div className="flex items-center gap-3 sm:justify-end">
                       <div className="text-left sm:text-right">
-                        <div className="text-xs font-bold text-gray-900">{rateText}</div>
+                        <div className="text-xs font-bold text-gray-900 privacy-money">{rateText}</div>
                         <span className="text-[10px] text-gray-400 font-medium">Taxa Efetiva</span>
                       </div>
                       <div className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-full text-[11px] font-semibold ${styles.bg}`}>
@@ -1180,12 +1184,12 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                           <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Valores de Contrato</span>
                           <div className="flex flex-col gap-0.5 text-gray-700">
                             {c.fixedBilling > 0 && (
-                              <p>Fee Fixo Mensal: <strong className="text-gray-900">{formatCurrency(refFixedFee)}</strong></p>
+                              <p>Fee Fixo Mensal: <strong className="text-gray-900 privacy-money">{formatCurrency(refFixedFee)}</strong></p>
                             )}
                             {c.variableBilling > 0 && (
-                              <p>Faturamento Extra ({c.billableHours.toFixed(1).replace('.', ',')}h): <strong className="text-yellow-600">{formatCurrency(c.variableBilling)}</strong></p>
+                              <p>Faturamento Extra ({c.billableHours.toFixed(1).replace('.', ',')}h): <strong className="text-yellow-600 privacy-money">{formatCurrency(c.variableBilling)}</strong></p>
                             )}
-                            <p>Taxa Hora Referência: <strong className="text-gray-900">{formatCurrency(refHourlyRate)}/h</strong></p>
+                            <p>Taxa Hora Referência: <strong className="text-gray-900 privacy-money">{formatCurrency(refHourlyRate)}/h</strong></p>
                           </div>
                         </div>
 
@@ -1193,12 +1197,12 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
                           <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Análise de Lucratividade</span>
                           <div className="flex flex-col gap-0.5 text-gray-700">
                             <p>
-                              Faturamento Total: <strong className="text-gray-900">{formatCurrency(c.billing)}</strong>
+                              Faturamento Total: <strong className="text-gray-900 privacy-money">{formatCurrency(c.billing)}</strong>
                             </p>
-                            <p>Custo Estimado de Esforço: <strong className="text-gray-900">{formatCurrency(effortCost)}</strong></p>
+                            <p>Custo Estimado de Esforço: <strong className="text-gray-900 privacy-money">{formatCurrency(effortCost)}</strong></p>
                             <p>
                               Retorno Líquido Real: {' '}
-                              <strong className={profit >= 0 ? "text-green-600" : "text-red-600"}>
+                              <strong className={`${profit >= 0 ? "text-green-600" : "text-red-600"} privacy-money`}>
                                 {profit >= 0 ? '+' : ''}{formatCurrency(profit)}
                               </strong>
                             </p>
@@ -1207,7 +1211,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
 
                       </div>
 
-                      <div className="border-t border-gray-200 pt-2 text-[11px] font-medium text-gray-500 italic leading-relaxed">
+                      <div className="border-t border-gray-200 pt-2 text-[11px] font-medium text-gray-500 italic leading-relaxed privacy-blur">
                         {advice}
                       </div>
 
