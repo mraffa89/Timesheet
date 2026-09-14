@@ -16,10 +16,11 @@ RUN npm run build
 # Stage 2: Production Server (Nginx + Node.js SMTP Backend)
 FROM nginx:alpine
 
-# Evita falha de handshake TLS no apk em Alpine mínimo e instala Node.js + certificados CA
-RUN sed -i 's/https/http/g' /etc/apk/repositories && \
-    apk update && \
-    apk add --no-cache ca-certificates nodejs
+# Instala Node.js e certificados CA usando HTTPS oficial com retentativas automáticas
+RUN for attempt in 1 2 3; do \
+      apk add --no-cache ca-certificates nodejs && break || \
+      (echo "Tentativa $attempt falhou. Aguardando para tentar novamente..." && sleep 3); \
+    done
 
 WORKDIR /app
 # Copy built static assets
