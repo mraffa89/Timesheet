@@ -1619,7 +1619,7 @@ export default function FreelancerManager({
                 {/* Subtotal se pertencer ao mesmo prestador */}
                 {selectedTasksFreelancer && (
                   <div className="hidden md:flex items-center gap-1.5 text-xs text-gray-300 bg-gray-900 px-3 py-1.5 rounded-xl border border-gray-800 font-medium">
-                    <span>{selectedTasksFreelancer.name}:</span>
+                    <span className="privacy-client">{selectedTasksFreelancer.name}:</span>
                     <span className="font-bold text-emerald-400 font-title privacy-money">{formatCurrency(selectedTasksTotalAmount)}</span>
                     <span className="text-[10px] text-gray-400 privacy-money">({formatCurrency(selectedTasksFreelancer.hourlyRate)}/h)</span>
                   </div>
@@ -1837,7 +1837,7 @@ export default function FreelancerManager({
                           <td className="py-3 px-4 text-gray-800 font-medium">
                             <span className="flex items-center gap-1.5">
                               <Users size={12} className="text-gray-400 shrink-0" />
-                              <span>{freela ? freela.name : 'Não Atribuído'}</span>
+                              <span className="privacy-client">{freela ? freela.name : 'Não Atribuído'}</span>
                             </span>
                           </td>
 
@@ -1989,7 +1989,7 @@ export default function FreelancerManager({
                     <div className="flex flex-col gap-3">
                       <div className="flex items-start justify-between">
                         <div>
-                          <h3 className="text-base font-black text-gray-950 leading-tight">{freela.name}</h3>
+                          <h3 className="text-base font-black text-gray-950 leading-tight privacy-client">{freela.name}</h3>
                           <span className="text-xs font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-md inline-block mt-1">
                             {freela.specialty || 'Freelancer'}
                           </span>
@@ -2455,7 +2455,7 @@ export default function FreelancerManager({
                       return (
                         <tr key={t.id} className="hover:bg-yellow-50/20">
                           <td className="py-2.5 px-4 font-bold text-gray-900">{t.title}</td>
-                          <td className="py-2.5 px-4 text-gray-700">{freela ? freela.name : 'Não Atribuído'}</td>
+                          <td className="py-2.5 px-4 text-gray-700 privacy-client">{freela ? freela.name : 'Não Atribuído'}</td>
                           <td className="py-2.5 px-4 text-gray-700 privacy-client">{getClientName(t.clientId)}</td>
                           <td className="py-2.5 px-4 text-gray-600">{t.category}</td>
                           <td className="py-2.5 px-4 text-gray-500 font-mono text-[11px]">{formatDateBR(t.requestDate)}</td>
@@ -3261,7 +3261,7 @@ export default function FreelancerManager({
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <span className="text-gray-400 font-bold text-[10px] uppercase block">Prestador</span>
-                  <span className="font-bold text-gray-900">{getFreelancerName(viewingReceiptTask.freelancerId)}</span>
+                  <span className="font-bold text-gray-900 privacy-client">{getFreelancerName(viewingReceiptTask.freelancerId)}</span>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <span className="text-gray-400 font-bold text-[10px] uppercase block">Horas Realizadas</span>

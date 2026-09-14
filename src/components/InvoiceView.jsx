@@ -901,13 +901,13 @@ Atenciosamente,
                     {client.address && (
                       <p className="text-xs text-gray-500 flex items-start gap-1 mt-0.5">
                         <MapPin size={12} className="shrink-0 mt-0.5 text-gray-400" />
-                        <span>{client.address}</span>
+                        <span className="privacy-client">{client.address}</span>
                       </p>
                     )}
                   </div>
 
                   {/* Right: Contacts */}
-                  <div className="flex flex-col gap-1 text-xs sm:text-right shrink-0 border-t sm:border-t-0 border-gray-200 pt-2 sm:pt-0 w-full sm:w-auto">
+                  <div className="flex flex-col gap-1 text-xs sm:text-right shrink-0 border-t sm:border-t-0 border-gray-200 pt-2 sm:pt-0 w-full sm:w-auto privacy-client">
                     {client.email && (
                       <p className="flex sm:justify-end items-center gap-1.5 text-gray-600">
                         <Mail size={12} className="text-gray-400 shrink-0" />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Edit3, Trash2, Search, X, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Check } from 'lucide-react';
+import PrivacyToggle from './PrivacyToggle';
 
 function SearchableClientSelect({ clients = [], value, onChange, placeholder = "Pesquisar ou selecionar cliente..." }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -36,7 +37,7 @@ function SearchableClientSelect({ clients = [], value, onChange, placeholder = "
           isOpen ? 'border-gray-900 ring-2 ring-gray-900/10 bg-white' : 'border-gray-200 hover:border-gray-300'
         }`}
       >
-        <span className={selectedClient ? "text-gray-950 font-bold" : "text-gray-400"}>
+        <span className={selectedClient ? "text-gray-950 font-bold privacy-client" : "text-gray-400"}>
           {selectedClient ? selectedClient.name : placeholder}
         </span>
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-gray-900' : ''}`} />
@@ -73,7 +74,7 @@ function SearchableClientSelect({ clients = [], value, onChange, placeholder = "
                     c.id === value ? 'bg-gray-100 text-gray-950 font-bold border border-gray-200' : 'text-gray-700'
                   }`}
                 >
-                  <span>{c.name}</span>
+                  <span className="privacy-client">{c.name}</span>
                   {c.id === value && <Check size={13} className="text-gray-950 font-bold" />}
                 </button>
               ))
@@ -369,13 +370,17 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
           <h1 className="font-title text-2xl font-bold text-gray-900">Timesheet</h1>
           <p className="text-sm text-gray-500">Histórico de lançamentos e demandas consolidadas por cliente.</p>
         </div>
-        <button 
-          className="flex items-center gap-1.5 px-4 py-2 bg-yellow-400 text-gray-950 rounded-lg text-xs font-bold hover:bg-yellow-500 shadow-xs transition-colors self-start sm:self-center cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed"
-          onClick={handleOpenAddModal}
-          disabled={clients.length === 0}
-        >
-          <Plus size={16} /> Lançar Demanda
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <PrivacyToggle />
+
+          <button 
+            className="flex items-center gap-1.5 px-4 py-2 bg-yellow-400 text-gray-950 rounded-lg text-xs font-bold hover:bg-yellow-500 shadow-xs transition-colors self-start sm:self-center cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed"
+            onClick={handleOpenAddModal}
+            disabled={clients.length === 0}
+          >
+            <Plus size={16} /> Lançar Demanda
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-gray-150 rounded-xl p-5 shadow-xs flex flex-col gap-4">
@@ -405,7 +410,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
           </div>
 
           <select 
-            className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors" 
+            className="bg-white border border-gray-200 rounded-lg py-2 px-3 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:outline-none focus:border-gray-900 cursor-pointer transition-colors privacy-client" 
             value={filterClient} 
             onChange={(e) => setFilterClient(e.target.value)}
           >
@@ -503,7 +508,7 @@ export default function TimesheetTable({ entries, clients, onAddEntry, onUpdateE
               <tbody className="divide-y divide-gray-100 bg-white">
                 {filteredEntries.map((entry) => (
                   <tr key={entry.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="py-3 px-4 font-semibold text-gray-900">{getClientName(entry.clientId)}</td>
+                    <td className="py-3 px-4 font-semibold text-gray-900 privacy-client">{getClientName(entry.clientId)}</td>
                     <td className="py-3 px-4 text-gray-500 whitespace-nowrap">{formatDate(entry.deliveryDate || entry.requestDate)}</td>
                     <td className="py-3 px-4 max-w-[320px] text-gray-700 font-medium break-words leading-relaxed">{entry.description}</td>
                     <td className="py-3 px-4 font-bold text-gray-900 whitespace-nowrap">{entry.hours.toFixed(2).replace('.', ',')}h</td>

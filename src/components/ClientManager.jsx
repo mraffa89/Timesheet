@@ -564,7 +564,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                         <span className="privacy-client">{client.name}</span>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-gray-600 whitespace-nowrap">
+                    <td className="py-3.5 px-4 font-mono text-gray-600 whitespace-nowrap privacy-client">
                       {formatCpfCnpj(client.cnpj) || '-'}
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap">
@@ -575,7 +575,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                         )}
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-[11px] text-gray-600">
+                    <td className="py-3.5 px-4 text-[11px] text-gray-600 privacy-client">
                       <div className="flex flex-col gap-0.5">
                         {client.email && <span>{client.email}</span>}
                         {client.phone && <span className="text-gray-500">{formatPhone(client.phone)}</span>}
@@ -671,7 +671,7 @@ export default function ClientManager({ clients, onAddClient, onUpdateClient, on
                 </div>
 
                 {/* Details list */}
-                <div className="flex flex-col gap-1.5 text-xs text-gray-500 border-t border-b border-gray-100 py-3">
+                <div className="flex flex-col gap-1.5 text-xs text-gray-500 border-t border-b border-gray-100 py-3 privacy-client">
                   {client.cnpj && (
                     <div className="flex items-center gap-2">
                       <Building size={13} className="text-gray-400 shrink-0" />

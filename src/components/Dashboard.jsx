@@ -676,7 +676,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
               <Users size={16} />
             </div>
           </div>
-          <span className="text-xl font-bold font-title text-gray-900">{stats.activeClientsCount}</span>
+          <span className="text-xl font-bold font-title text-gray-900 privacy-blur">{stats.activeClientsCount}</span>
           <span className="text-[10px] text-yellow-600 font-semibold cursor-pointer flex items-center gap-0.5" onClick={() => onNavigateToTab('clients')}>
             Gerenciar clientes <ArrowUpRight size={10} />
           </span>
@@ -739,7 +739,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50/70 p-3 rounded-xl border border-gray-100 text-xs">
             <div>
               <span className="text-[10px] text-gray-400 font-semibold uppercase block">Maior Demandante</span>
-              <span className="font-bold text-gray-900 truncate block" title={topDemander?.name}>
+              <span className="font-bold text-gray-900 truncate block privacy-client" title={topDemander?.name}>
                 {topDemander ? `${topDemander.name} (${topDemander.initials})` : 'N/A'}
               </span>
             </div>
@@ -999,7 +999,7 @@ export default function Dashboard({ entries = [], clients = [], onNavigateToTab,
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-title text-base font-bold text-gray-900">Faturamento & Retorno por Cliente</h3>
-              <span className="bg-gray-100 text-gray-600 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              <span className="bg-gray-100 text-gray-600 text-[11px] font-bold px-2 py-0.5 rounded-full privacy-blur">
                 {filteredProfitabilityList.length} {filteredProfitabilityList.length === 1 ? 'cliente' : 'clientes'}
               </span>
             </div>
