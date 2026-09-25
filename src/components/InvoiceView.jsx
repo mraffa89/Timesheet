@@ -18,7 +18,7 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import { createAsaasBilling, attachDocumentToAsaasPayment } from '../utils/asaasIntegration';
+import { createAsaasBilling, attachDocumentToAsaasPayment, sanitizeFileName } from '../utils/asaasIntegration';
 import { generateInvoicePdf } from '../utils/pdfGenerator';
 import { formatCpfCnpj, formatPhone } from '../utils/cnpjLookup';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
@@ -402,9 +402,9 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
         monthName: getMonthNamePT(selectedMonth)
       });
 
-      const safeClientName = (client.name || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase();
+      const safeClientName = sanitizeFileName(client.name || 'Cliente').toUpperCase();
       const monthParts = selectedMonth.split('-');
-      const monthStr = getMonthNamePT(selectedMonth).split(' ')[0];
+      const monthStr = sanitizeFileName(getMonthNamePT(selectedMonth).split(' ')[0]);
       const filename = `Demonstrativo_${safeClientName}_${monthStr}_${monthParts[0]}.pdf`;
 
       doc.save(filename);
@@ -465,9 +465,9 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
           monthName: getMonthNamePT(selectedMonth)
         });
 
-        const safeClientName = (client.name || 'Cliente').replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase();
+        const safeClientName = sanitizeFileName(client.name || 'Cliente').toUpperCase();
         const monthParts = selectedMonth.split('-');
-        const monthStr = getMonthNamePT(selectedMonth).split(' ')[0];
+        const monthStr = sanitizeFileName(getMonthNamePT(selectedMonth).split(' ')[0]);
         const filename = `Demonstrativo_${safeClientName}_${monthStr}_${monthParts[0]}.pdf`;
         const pdfBlob = doc.output('blob');
 
@@ -676,8 +676,8 @@ Atenciosamente,
     try {
       setIsSendingDirectEmail(true);
 
-      const safeClientName = (client.name || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_');
-      const safePeriod = (selectedMonth || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+      const safeClientName = sanitizeFileName(client.name || 'Cliente').toUpperCase();
+      const safePeriod = sanitizeFileName(selectedMonth || 'periodo');
       const filename = `Demonstrativo_${safeClientName}_${safePeriod}.pdf`;
 
       // 1. Gera o PDF oficial em memória
@@ -1213,7 +1213,7 @@ Atenciosamente,
                     <>
                       <strong className="block text-emerald-900">Servidor SMTP Vinculado & Pronto para Envio Direto</strong>
                       <span>
-                        Ao clicar em <strong>"Enviar Direto (SMTP)"</strong>, a mensagem será transmitida diretamente através do seu servidor de e-mail com o demonstrativo em anexo PDF oficial: <strong>Demonstrativo_{client?.name ? client.name.replace(/[^a-zA-Z0-9_-]/g, '_').toUpperCase() : 'CLIENTE'}_{getMonthNamePT(selectedMonth).split(' ')[0]}_{selectedMonth.split('-')[0]}.pdf</strong>.
+                        Ao clicar em <strong>"Enviar Direto (SMTP)"</strong>, a mensagem será transmitida diretamente através do seu servidor de e-mail com o demonstrativo em anexo PDF oficial: <strong>Demonstrativo_{sanitizeFileName(client?.name || 'CLIENTE').toUpperCase()}_{sanitizeFileName(getMonthNamePT(selectedMonth).split(' ')[0])}_{selectedMonth.split('-')[0]}.pdf</strong>.
                       </span>
                     </>
                   ) : (

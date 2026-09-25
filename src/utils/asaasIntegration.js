@@ -649,12 +649,29 @@ export async function createAsaasBilling(params = {}) {
 }
 
 /**
+ * Remove acentos e caracteres especiais de nomes de arquivos,
+ * mantendo as letras corretas sem acento (ex: 'COLÉGIO' vira 'COLEGIO').
+ * @param {string} str
+ * @returns {string}
+ */
+export function sanitizeFileName(str) {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
  * Anexa o documento PDF do Demonstrativo de Serviços à cobrança criada no Asaas
  * @param {string} paymentId - ID da cobrança no Asaas
  * @param {Blob} pdfBlob - Blob binário do PDF gerado
  * @param {string} fileName - Nome do arquivo PDF (ex: Demonstrativo_CLIENTE_Mes_Ano.pdf)
+ * @param {boolean} availableAfterPayment - Se true, restringe para após o pagamento. Padrão false (disponível a qualquer momento).
  */
-export async function attachDocumentToAsaasPayment(paymentId, pdfBlob, fileName) {
+export async function attachDocumentToAsaasPayment(paymentId, pdfBlob, fileName, availableAfterPayment = false) {
   const token = localStorage.getItem('raffa_asaas_token');
   const env = localStorage.getItem('raffa_asaas_env') || 'sandbox';
 
@@ -666,11 +683,12 @@ export async function attachDocumentToAsaasPayment(paymentId, pdfBlob, fileName)
 
   try {
     const formData = new FormData();
-    const cleanFileName = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+    const baseName = String(fileName || 'documento').replace(/\.pdf$/i, '');
+    const cleanFileName = `${sanitizeFileName(baseName) || 'documento'}.pdf`;
     const file = new File([pdfBlob], cleanFileName, { type: 'application/pdf' });
     formData.append('file', file);
     formData.append('type', 'DOCUMENT');
-    formData.append('availableAfterPayment', 'true');
+    formData.append('availableAfterPayment', availableAfterPayment ? 'true' : 'false');
 
     const response = await fetch(`${baseUrl}/payments/${paymentId}/documents`, {
       method: 'POST',

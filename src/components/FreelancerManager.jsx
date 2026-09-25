@@ -42,7 +42,7 @@ import {
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatPhone, formatCpfCnpj } from '../utils/cnpjLookup';
-import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType } from '../utils/asaasIntegration';
+import { createAsaasPixTransfer, fetchAsaasTransferReceipt, detectPixKeyType, sanitizeFileName } from '../utils/asaasIntegration';
 import { generatePayrollPdf } from '../utils/pdfGenerator';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
 import PrivacyToggle from './PrivacyToggle';
@@ -1137,8 +1137,8 @@ export default function FreelancerManager({
 
       const freela = getFreelancer(payrollFreelancerId);
       const targetName = freela ? freela.name : 'Todos_Prestadores';
-      const safeName = targetName.replace(/[^a-zA-Z0-9]/g, '_');
-      const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+      const safeName = sanitizeFileName(targetName);
+      const safePeriod = sanitizeFileName(payrollPeriodLabel || 'periodo');
       const filename = `Fechamento_${safeName}_${safePeriod}.pdf`;
 
       // 1. Gera o PDF corporativo oficial em memória com comprovantes e detalhamento
@@ -1419,8 +1419,8 @@ export default function FreelancerManager({
     try {
       const freela = getFreelancer(payrollFreelancerId);
       const targetName = freela ? freela.name : 'Todos_Prestadores';
-      const safeName = targetName.replace(/[^a-zA-Z0-9]/g, '_');
-      const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+      const safeName = sanitizeFileName(targetName);
+      const safePeriod = sanitizeFileName(payrollPeriodLabel || 'periodo');
 
       const doc = await generatePayrollPdf({
         freelancer: freela,
@@ -1459,7 +1459,7 @@ export default function FreelancerManager({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    const safePeriod = (payrollPeriodLabel || 'periodo').replace(/[^a-zA-Z0-9]/g, '_');
+    const safePeriod = sanitizeFileName(payrollPeriodLabel || 'periodo');
     link.setAttribute('download', `fechamento_freelancers_${safePeriod}.csv`);
     document.body.appendChild(link);
     link.click();
