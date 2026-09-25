@@ -18,7 +18,7 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import { createAsaasBilling, attachDocumentToAsaasPayment, sanitizeFileName } from '../utils/asaasIntegration';
+import { createAsaasBilling, attachDocumentToAsaasPayment, sanitizeFileName, scheduleAsaasInvoiceForPayment } from '../utils/asaasIntegration';
 import { generateInvoicePdf } from '../utils/pdfGenerator';
 import { formatCpfCnpj, formatPhone } from '../utils/cnpjLookup';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
@@ -95,6 +95,7 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
   // Asaas Billing Integration State
   const [isGeneratingAsaas, setIsGeneratingAsaas] = useState(false);
   const [asaasBilling, setAsaasBilling] = useState(null);
+  const [isSchedulingNfe, setIsSchedulingNfe] = useState(false);
   const [copiedPix, setCopiedPix] = useState(false);
 
   // Fallback company defaults matching user profile
@@ -497,6 +498,47 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
       alert("Erro ao processar integração com Asaas: " + err.message);
     } finally {
       setIsGeneratingAsaas(false);
+    }
+  };
+
+  // Agendar NFS-e para uma cobrança já existente no Asaas
+  const handleRetryScheduleInvoice = async () => {
+    if (!asaasBilling?.billingId || !client) return;
+    setIsSchedulingNfe(true);
+    try {
+      const storedToken = localStorage.getItem('raffa_asaas_token') || '';
+      const storedEnv = localStorage.getItem('raffa_asaas_env') || 'sandbox';
+      const effectiveDueDate = asaasBilling.dueDate || customDueDate || getDefaultDueDateForMonth(selectedMonth);
+
+      const nfeRes = await scheduleAsaasInvoiceForPayment({
+        paymentId: asaasBilling.billingId,
+        amount: financials?.totalAmount || 0,
+        period: selectedMonth,
+        dueDate: effectiveDueDate,
+        client,
+        apiKey: storedToken,
+        environment: storedEnv
+      });
+
+      if (nfeRes.success) {
+        const updatedBilling = {
+          ...asaasBilling,
+          invoiceScheduled: true,
+          invoiceId: nfeRes.invoiceId,
+          invoiceStatus: nfeRes.invoiceStatus,
+          invoiceMessage: nfeRes.invoiceMessage,
+          retainIss: nfeRes.retainIss
+        };
+        setAsaasBilling(updatedBilling);
+        localStorage.setItem(`raffa_asaas_billing_${client.id}_${selectedMonth}`, JSON.stringify(updatedBilling));
+        alert(`✓ NFS-e agendada com sucesso para a cobrança no Asaas!\n\n${nfeRes.invoiceMessage}`);
+      } else {
+        alert(`Não foi possível agendar a NFS-e:\n\n${nfeRes.error || nfeRes.invoiceMessage}`);
+      }
+    } catch (err) {
+      alert("Erro ao agendar NFS-e: " + err.message);
+    } finally {
+      setIsSchedulingNfe(false);
     }
   };
 
@@ -1053,11 +1095,22 @@ Atenciosamente,
                                 </a>
                               )}
 
-                              {asaasBilling.invoiceScheduled && (
+                              {asaasBilling.invoiceScheduled ? (
                                 <div className="flex items-center gap-1.5 text-[10px] text-gray-800 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-md font-semibold mt-1">
                                   <CheckCircle2 size={13} className="text-gray-700 shrink-0" />
                                   <span>NFS-e agendada (emissão automática ao receber pagamento)</span>
                                 </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={handleRetryScheduleInvoice}
+                                  disabled={isSchedulingNfe}
+                                  className="flex items-center gap-1.5 text-[10px] text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-md font-semibold mt-1 transition-colors cursor-pointer disabled:opacity-50"
+                                  title="Tentar agendar NFS-e para esta cobrança existente no Asaas"
+                                >
+                                  <FileText size={12} className={isSchedulingNfe ? "animate-spin" : ""} />
+                                  <span>{isSchedulingNfe ? 'Agendando NFS-e...' : 'Agendar NFS-e da cobrança'}</span>
+                                </button>
                               )}
                             </div>
                           </div>

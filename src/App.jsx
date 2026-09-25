@@ -1777,20 +1777,39 @@ function App() {
                     </select>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                    <input 
-                      id="asaas-auto-nfe"
-                      type="checkbox"
-                      checked={asaasAutoNfe}
-                      onChange={(e) => {
-                        setAsaasAutoNfe(e.target.checked);
-                        localStorage.setItem('raffa_asaas_auto_nfe', e.target.checked.toString());
-                      }}
-                      className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
-                    />
-                    <label htmlFor="asaas-auto-nfe" className="text-xs font-semibold text-gray-700 cursor-pointer">
-                      Agendar emissão da Nota Fiscal (NFS-e) automaticamente ao receber o pagamento
-                    </label>
+                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        id="asaas-auto-nfe"
+                        type="checkbox"
+                        checked={asaasAutoNfe}
+                        onChange={(e) => {
+                          setAsaasAutoNfe(e.target.checked);
+                          localStorage.setItem('raffa_asaas_auto_nfe', e.target.checked.toString());
+                        }}
+                        className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
+                      />
+                      <label htmlFor="asaas-auto-nfe" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                        Agendar emissão da Nota Fiscal (NFS-e) automaticamente ao receber o pagamento
+                      </label>
+                    </div>
+
+                    {asaasAutoNfe && (
+                      <div className="flex items-center gap-2 pl-6 mt-1">
+                        <label htmlFor="asaas-iss-rate" className="text-xs font-medium text-gray-600">Alíquota padrão de ISS (%):</label>
+                        <input 
+                          id="asaas-iss-rate"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="100"
+                          className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center font-bold text-gray-900 focus:outline-none focus:border-yellow-500 bg-white"
+                          defaultValue={localStorage.getItem('raffa_asaas_iss_rate') || '2'}
+                          onChange={(e) => localStorage.setItem('raffa_asaas_iss_rate', e.target.value)}
+                        />
+                        <span className="text-[11px] text-gray-400">Padrão: 2% (aplicado quando houver retenção de ISS pelo tomador)</span>
+                      </div>
+                    )}
                   </div>
 
                   {asaasTestStatus && (

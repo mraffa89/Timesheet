@@ -17,6 +17,7 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
   const [hoursIncluded, setHoursIncluded] = useState('7');
   const [hourlyRate, setHourlyRate] = useState(() => localStorage.getItem('raffa_default_hourly_rate') || '200');
   const [retainIss, setRetainIss] = useState(false);
+  const [issRate, setIssRate] = useState('2');
   const [isImportingCnpj, setIsImportingCnpj] = useState(false);
   const [isConsultingPublicCnpj, setIsConsultingPublicCnpj] = useState(false);
 
@@ -48,6 +49,7 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
       const clientNameLower = (client.name || '').toLowerCase();
       const isPedroRafael = clientNameLower.includes('pedro') && (clientNameLower.includes('rafael') || clientNameLower.includes('&'));
       setRetainIss(client.retainIss !== undefined ? Boolean(client.retainIss) : isPedroRafael);
+      setIssRate(client.issRate !== undefined && client.issRate !== null ? client.issRate.toString() : (localStorage.getItem('raffa_asaas_iss_rate') || '2'));
       setContractType(client.contractType || 'hybrid');
       setFixedFee(client.fixedFee ? client.fixedFee.toString() : '0');
       setHourlyRate(client.hourlyRate ? client.hourlyRate.toString() : (localStorage.getItem('raffa_default_hourly_rate') || '200'));
@@ -62,6 +64,7 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
       setAddress('');
       setIsActive(true);
       setRetainIss(false);
+      setIssRate(localStorage.getItem('raffa_asaas_iss_rate') || '2');
       setContractType('fixed');
       setFixedFee('1000');
       setHourlyRate(globalRate);
@@ -181,7 +184,8 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
       hoursIncluded: contractType === 'hourly' ? 0 : (parseFloat(hoursIncluded) || 0),
       hourlyRate: parseFloat(hourlyRate) || 0,
       isActive: isActive,
-      retainIss: retainIss
+      retainIss: retainIss,
+      issRate: parseFloat(issRate) || 2
     };
 
     if (client && client.id) {
@@ -375,6 +379,29 @@ export default function ClientModal({ isOpen, onClose, client, onSave, clients =
                 ? 'ℹ️ Ao gerar faturas para este cliente no Asaas, a NFS-e será programada com retenção de ISS pelo tomador.' 
                 : 'ℹ️ Padrão: O imposto ISS é recolhido pelo prestador (sem retenção de ISS pelo cliente).'}
             </p>
+
+            {retainIss && (
+              <div className="flex items-center gap-2 mt-1 pt-2 border-t border-amber-200/80">
+                <label htmlFor="modal-client-iss-rate" className="text-xs font-semibold text-gray-800">
+                  Alíquota ISS Retido:
+                </label>
+                <div className="flex items-center gap-1">
+                  <input
+                    id="modal-client-iss-rate"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={issRate}
+                    onChange={(e) => setIssRate(e.target.value)}
+                    className="w-16 px-2 py-1 text-xs border border-amber-300 rounded bg-white font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-400 text-center"
+                    placeholder="2"
+                  />
+                  <span className="text-xs font-bold text-gray-700">%</span>
+                </div>
+                <span className="text-[11px] text-gray-500">(Padrão 2% para retenção na fonte)</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

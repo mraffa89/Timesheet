@@ -543,86 +543,25 @@ export async function createAsaasBilling(params = {}) {
     let invoiceStatus = '';
     let invoiceMessage = '';
 
-    // Determina regra de ISS:
-    // Padrão: retainIss = false (ISS por conta do prestador)
-    // Exceção: Colégio Pedro e Rafael (ou retainIss explícito no cliente) -> retainIss = true (tomador do ISS)
-    const rawClientName = (params.client?.name || params.clientName || '').toLowerCase();
-    const isPedroRafael = rawClientName.includes('pedro') && (rawClientName.includes('rafael') || rawClientName.includes('&'));
-    const isTomadorIss = params.client?.retainIss !== undefined ? Boolean(params.client.retainIss) : isPedroRafael;
-
     const autoNfeEnabled = localStorage.getItem('raffa_asaas_auto_nfe') !== 'false';
     if (autoNfeEnabled) {
       try {
-        const invoiceDescription = `PRESTAÇÃO DE SERVIÇOS DE MARKETING - JOBS AVULSOS - ${monthYearFormatted}`;
-        
-        // Tenta buscar o serviço municipal padrão da conta no Asaas caso não esteja em cache local
-        let municipalServiceId = localStorage.getItem('raffa_asaas_municipal_service_id') || null;
-        let municipalServiceName = localStorage.getItem('raffa_asaas_municipal_service_name') || null;
-
-        if (!municipalServiceId) {
-          try {
-            const srvRes = await fetch(`${baseUrl}/fiscalInfo/services?limit=1`, {
-              method: 'GET',
-              headers: { 'access_token': token }
-            });
-            if (srvRes.ok) {
-              const srvData = await srvRes.json();
-              if (srvData?.data && srvData.data.length > 0) {
-                municipalServiceId = srvData.data[0].id;
-                municipalServiceName = srvData.data[0].description;
-              }
-            }
-          } catch (e) {
-            console.warn("Aviso ao buscar serviço municipal no Asaas:", e);
-          }
-        }
-
-        const invoicePayload = {
-          payment: paymentData.id,
-          serviceDescription: invoiceDescription,
-          observations: `Serviços de marketing prestados em ${monthYearFormatted}. Cobrança Asaas: ${paymentData.id}`,
-          value: Number(amount.toFixed(2)),
-          deductions: 0,
-          effectiveDate: dueDate, // vinculado à cobrança e agendado para emissão no pagamento
-          taxes: {
-            retainIss: isTomadorIss
-          }
-        };
-
-        if (municipalServiceId) {
-          invoicePayload.municipalServiceId = municipalServiceId;
-        }
-        if (municipalServiceName) {
-          invoicePayload.municipalServiceName = municipalServiceName;
-        }
-
-        const invoiceResponse = await fetch(`${baseUrl}/invoices`, {
-          method: 'POST',
-          headers: {
-            'access_token': token,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(invoicePayload)
+        const nfeRes = await scheduleAsaasInvoiceForPayment({
+          paymentId: paymentData.id,
+          amount,
+          period,
+          dueDate,
+          client: params.client,
+          apiKey: token,
+          environment: env
         });
-
-        if (invoiceResponse.ok) {
-          const invoiceData = await invoiceResponse.json();
-          invoiceScheduled = true;
-          invoiceId = invoiceData.id;
-          invoiceStatus = invoiceData.status || 'SCHEDULED';
-          invoiceMessage = `NFS-e agendada com sucesso (será emitida automaticamente assim que o cliente realizar o pagamento). ISS: ${isTomadorIss ? 'Retido pelo tomador (Colégio Pedro e Rafael)' : 'Por conta do prestador'}.`;
-        } else {
-          try {
-            const errData = await invoiceResponse.json();
-            const errDesc = errData.errors?.map(e => e.description).join(', ');
-            invoiceMessage = `Aviso NFS-e: ${errDesc || invoiceResponse.statusText}`;
-          } catch (e) {
-            invoiceMessage = 'Módulo fiscal de NFS-e não habilitado no Asaas.';
-          }
-        }
+        invoiceScheduled = nfeRes.invoiceScheduled;
+        invoiceId = nfeRes.invoiceId || '';
+        invoiceStatus = nfeRes.invoiceStatus || '';
+        invoiceMessage = nfeRes.invoiceMessage || '';
       } catch (errNfe) {
         console.warn('Nota fiscal não agendada:', errNfe);
-        invoiceMessage = 'Módulo fiscal de NFS-e não habilitado no Asaas.';
+        invoiceMessage = 'Módulo fiscal de NFS-e não habilitado ou configurado no Asaas.';
       }
     }
 
@@ -715,6 +654,236 @@ export async function attachDocumentToAsaasPayment(paymentId, pdfBlob, fileName,
   } catch (err) {
     console.error('Erro ao enviar documento anexo para o Asaas:', err);
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Consulta as configurações fiscais e alíquota padrão de ISS diretamente da conta do Asaas
+ * @param {string} [apiKey]
+ * @param {string} [environment]
+ * @returns {Promise<{issRate: number|null, municipalServiceId: string|null, municipalServiceName: string|null, municipalServiceCode: string|null}|null>}
+ */
+export async function fetchAsaasAccountFiscalInfo(apiKey, environment) {
+  const token = (apiKey || localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (environment || localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
+  const baseUrl = getAsaasBaseUrl(env);
+
+  if (!token) return null;
+
+  let issRate = null;
+  let municipalServiceId = null;
+  let municipalServiceName = null;
+  let municipalServiceCode = null;
+
+  // 1. Tenta buscar serviços municipais cadastrados na conta Asaas (e suas respectivas alíquotas de ISS)
+  try {
+    const srvRes = await fetch(`${baseUrl}/fiscalInfo/services?limit=10`, {
+      method: 'GET',
+      headers: { 'access_token': token }
+    });
+    if (srvRes.ok) {
+      const srvData = await srvRes.json();
+      if (srvData?.data && srvData.data.length > 0) {
+        const srv = srvData.data[0];
+        municipalServiceId = srv.id || null;
+        municipalServiceName = srv.description || null;
+        if (srv.serviceCode) municipalServiceCode = srv.serviceCode;
+        if (srv.issTaxRate !== undefined && srv.issTaxRate !== null && !isNaN(Number(srv.issTaxRate))) {
+          issRate = Number(srv.issTaxRate);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Aviso ao buscar serviços fiscais no Asaas:", e);
+  }
+
+  // 2. Se a alíquota não veio pelo serviço, busca no histórico de notas fiscais da conta
+  if (issRate === null) {
+    try {
+      const invRes = await fetch(`${baseUrl}/invoices?limit=5`, {
+        method: 'GET',
+        headers: { 'access_token': token }
+      });
+      if (invRes.ok) {
+        const invData = await invRes.json();
+        if (invData?.data && invData.data.length > 0) {
+          const invWithTaxes = invData.data.find(i => i.taxes?.iss !== undefined && i.taxes?.iss !== null && !isNaN(Number(i.taxes.iss))) || invData.data[0];
+          if (invWithTaxes?.taxes?.iss !== undefined && invWithTaxes?.taxes?.iss !== null && !isNaN(Number(invWithTaxes.taxes.iss))) {
+            issRate = Number(invWithTaxes.taxes.iss);
+          }
+          if (!municipalServiceId && invWithTaxes?.municipalServiceId) {
+            municipalServiceId = invWithTaxes.municipalServiceId;
+          }
+          if (!municipalServiceName && invWithTaxes?.municipalServiceName) {
+            municipalServiceName = invWithTaxes.municipalServiceName;
+          }
+          if (!municipalServiceCode && invWithTaxes?.municipalServiceCode) {
+            municipalServiceCode = invWithTaxes.municipalServiceCode;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso ao buscar notas no Asaas:", e);
+    }
+  }
+
+  if (issRate !== null) {
+    localStorage.setItem('raffa_asaas_iss_rate', issRate.toString());
+  }
+  if (municipalServiceId) {
+    localStorage.setItem('raffa_asaas_municipal_service_id', municipalServiceId);
+  }
+  if (municipalServiceName) {
+    localStorage.setItem('raffa_asaas_municipal_service_name', municipalServiceName);
+  }
+  if (municipalServiceCode) {
+    localStorage.setItem('raffa_asaas_municipal_service_code', municipalServiceCode);
+  }
+
+  return {
+    issRate,
+    municipalServiceId,
+    municipalServiceName,
+    municipalServiceCode
+  };
+}
+
+/**
+ * Agenda a emissão de Nota Fiscal de Serviço (NFS-e) vinculada a uma cobrança no Asaas
+ * Suporta clientes tomadores de ISS (com retenção na fonte) com payload completo de tributos exigido pela API do Asaas.
+ */
+export async function scheduleAsaasInvoiceForPayment({
+  paymentId,
+  amount,
+  period,
+  dueDate,
+  client,
+  apiKey,
+  environment
+}) {
+  const token = (apiKey || localStorage.getItem('raffa_asaas_token') || '').trim();
+  const env = (environment || localStorage.getItem('raffa_asaas_env') || 'sandbox').trim();
+  const baseUrl = getAsaasBaseUrl(env);
+
+  if (!token || !paymentId) {
+    return { 
+      success: false, 
+      invoiceScheduled: false, 
+      error: 'Parâmetros insuficientes para agendamento da NFS-e.' 
+    };
+  }
+
+  // 1. Formata período (ex: 2026-08 -> 08/2026)
+  let monthYearFormatted = period || '';
+  if (monthYearFormatted && monthYearFormatted.includes('-')) {
+    const parts = monthYearFormatted.split('-');
+    if (parts.length === 2) {
+      monthYearFormatted = `${parts[1]}/${parts[0]}`;
+    }
+  }
+
+  // 2. Determina se o cliente retém ISS (Tomador de ISS)
+  const rawClientName = (client?.name || '').toLowerCase();
+  const isPedroRafael = rawClientName.includes('pedro') && (rawClientName.includes('rafael') || rawClientName.includes('&'));
+  const isTomadorIss = client?.retainIss !== undefined ? Boolean(client.retainIss) : isPedroRafael;
+
+  const invoiceDescription = `PRESTAÇÃO DE SERVIÇOS DE MARKETING - JOBS AVULSOS - ${monthYearFormatted}`;
+
+  // 3. Consulta ao vivo na conta do Asaas a alíquota de ISS e serviços municipais configurados
+  let accountFiscal = null;
+  try {
+    accountFiscal = await fetchAsaasAccountFiscalInfo(token, env);
+  } catch (e) {
+    console.warn("Aviso ao consultar dados fiscais ao vivo no Asaas:", e);
+  }
+
+  let municipalServiceId = accountFiscal?.municipalServiceId || localStorage.getItem('raffa_asaas_municipal_service_id') || null;
+  let municipalServiceName = accountFiscal?.municipalServiceName || localStorage.getItem('raffa_asaas_municipal_service_name') || null;
+  let municipalServiceCode = accountFiscal?.municipalServiceCode || localStorage.getItem('raffa_asaas_municipal_service_code') || null;
+
+  // 4. Alíquota de ISS válida:
+  // Prioridade: Alíquota específica cadastrada no cliente -> Alíquota padrão puxada da conta do Asaas -> Configuração salva -> 2.0%
+  const clientHasCustomRate = client?.issRate !== undefined && client?.issRate !== null && !isNaN(parseFloat(client.issRate));
+  const effectiveIssRate = clientHasCustomRate
+    ? parseFloat(client.issRate)
+    : (accountFiscal?.issRate ?? parseFloat(localStorage.getItem('raffa_asaas_iss_rate')) ?? 2.0);
+
+  // 5. Conforme especificação OpenAPI InvoiceTaxesRequestDTO do Asaas, todos os 7 campos de taxes são obrigatórios
+  const taxesPayload = {
+    retainIss: Boolean(isTomadorIss),
+    iss: Number(effectiveIssRate),
+    pis: 0,
+    cofins: 0,
+    csll: 0,
+    inss: 0,
+    ir: 0
+  };
+
+  const todayIso = new Date().toISOString().split('T')[0];
+  const effectiveDate = dueDate && dueDate >= todayIso ? dueDate : todayIso;
+
+  const invoicePayload = {
+    payment: paymentId,
+    serviceDescription: invoiceDescription,
+    observations: `Serviços de marketing prestados em ${monthYearFormatted}. Cobrança Asaas: ${paymentId}`,
+    value: Number(Number(amount).toFixed(2)),
+    deductions: 0,
+    effectiveDate: effectiveDate,
+    municipalServiceName: municipalServiceName || 'Prestação de Serviços de Marketing',
+    taxes: taxesPayload
+  };
+
+  if (municipalServiceId) {
+    invoicePayload.municipalServiceId = municipalServiceId;
+  }
+  if (municipalServiceCode) {
+    invoicePayload.municipalServiceCode = municipalServiceCode;
+  }
+
+  try {
+    const invoiceResponse = await fetch(`${baseUrl}/invoices`, {
+      method: 'POST',
+      headers: {
+        'access_token': token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(invoicePayload)
+    });
+
+    if (invoiceResponse.ok) {
+      const invoiceData = await invoiceResponse.json();
+      return {
+        success: true,
+        invoiceScheduled: true,
+        invoiceId: invoiceData.id,
+        invoiceStatus: invoiceData.status || 'SCHEDULED',
+        effectiveIssRate,
+        retainIss: isTomadorIss,
+        invoiceMessage: `NFS-e agendada com sucesso (será emitida automaticamente assim que o cliente realizar o pagamento). ISS (${effectiveIssRate}%): ${isTomadorIss ? 'Retido pelo tomador' : 'Por conta do prestador'}.`
+      };
+    } else {
+      let errDesc = '';
+      try {
+        const errData = await invoiceResponse.json();
+        errDesc = errData.errors?.map(e => e.description).join(', ');
+        console.warn("Erro detalhado ao agendar NFS-e no Asaas:", errData, invoicePayload);
+      } catch (_) {}
+
+      return {
+        success: false,
+        invoiceScheduled: false,
+        error: errDesc || invoiceResponse.statusText,
+        invoiceMessage: `Aviso NFS-e: ${errDesc || invoiceResponse.statusText}`
+      };
+    }
+  } catch (err) {
+    console.error("Exceção ao agendar NFS-e no Asaas:", err);
+    return {
+      success: false,
+      invoiceScheduled: false,
+      error: err.message,
+      invoiceMessage: `Aviso NFS-e: ${err.message}`
+    };
   }
 }
 
