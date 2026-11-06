@@ -76,7 +76,7 @@ import {
   updateFreelancerTaskDb,
   deleteFreelancerTaskDb
 } from './lib/supabase';
-import { testAsaasConnection } from './utils/asaasIntegration';
+import { testAsaasConnection, fetchAsaasAccountFiscalInfo, parseIssRate, formatIssRatePtBr } from './utils/asaasIntegration';
 
 const defaultCompanyProfile = {
   brandName: 'Matheus Raffa',
@@ -163,7 +163,16 @@ function App() {
   const [asaasToken, setAsaasToken] = useState(localStorage.getItem('raffa_asaas_token') || '');
   const [asaasEnv, setAsaasEnv] = useState(localStorage.getItem('raffa_asaas_env') || 'sandbox');
   const [asaasAutoNfe, setAsaasAutoNfe] = useState(() => localStorage.getItem('raffa_asaas_auto_nfe') !== 'false');
+  const [asaasNationalPortal, setAsaasNationalPortal] = useState(() => localStorage.getItem('raffa_asaas_national_portal') !== 'false');
+  const [asaasServiceCode, setAsaasServiceCode] = useState(() => localStorage.getItem('raffa_asaas_service_code_manual') || localStorage.getItem('raffa_asaas_municipal_service_code') || '');
+  const [asaasServiceName, setAsaasServiceName] = useState(() => localStorage.getItem('raffa_asaas_service_name_manual') || localStorage.getItem('raffa_asaas_municipal_service_name') || '');
   const [asaasTestStatus, setAsaasTestStatus] = useState(null);
+
+  // Alíquota Mensal de ISS do Prestador (atualizada todo mês, ex: 2,643981%)
+  const [providerIssRate, setProviderIssRate] = useState(() => {
+    const saved = localStorage.getItem('raffa_provider_iss_rate') || localStorage.getItem('raffa_asaas_iss_rate') || '2';
+    return formatIssRatePtBr(saved) || '2';
+  });
 
   // Global Default Hourly Rate (Default: R$ 200)
   const [defaultHourlyRate, setDefaultHourlyRate] = useState(() => localStorage.getItem('raffa_default_hourly_rate') || '200');
@@ -374,10 +383,30 @@ function App() {
     setFreelancerTasks(localTasks ? JSON.parse(localTasks) : []);
   };
 
+  const handleProviderIssRateChange = (rawVal) => {
+    const cleaned = String(rawVal || '').replace(/[^0-9.,]/g, '');
+    setProviderIssRate(cleaned);
+    const parsed = parseIssRate(cleaned);
+    if (parsed !== null) {
+      localStorage.setItem('raffa_provider_iss_rate', parsed.toString());
+      localStorage.setItem('raffa_asaas_iss_rate', parsed.toString());
+    }
+  };
+
   const handleSaveCompanyInfo = (e) => {
     e.preventDefault();
-    setCompanyInfo(companyForm);
-    localStorage.setItem('raffa_company_info', JSON.stringify(companyForm));
+    const parsedIss = parseIssRate(providerIssRate);
+    if (parsedIss !== null) {
+      localStorage.setItem('raffa_provider_iss_rate', parsedIss.toString());
+      localStorage.setItem('raffa_asaas_iss_rate', parsedIss.toString());
+      setProviderIssRate(formatIssRatePtBr(parsedIss));
+    }
+    const updatedCompany = {
+      ...companyForm,
+      providerIssRate: parsedIss !== null ? parsedIss : undefined
+    };
+    setCompanyInfo(updatedCompany);
+    localStorage.setItem('raffa_company_info', JSON.stringify(updatedCompany));
     setSavedSuccessMessage(true);
     setTimeout(() => setSavedSuccessMessage(false), 3000);
   };
@@ -412,13 +441,42 @@ function App() {
     localStorage.setItem('raffa_asaas_token', asaasToken.trim());
     localStorage.setItem('raffa_asaas_env', asaasEnv);
     localStorage.setItem('raffa_asaas_auto_nfe', asaasAutoNfe.toString());
+    localStorage.setItem('raffa_asaas_national_portal', asaasNationalPortal.toString());
+    localStorage.setItem('raffa_asaas_service_code_manual', asaasServiceCode.trim());
+    localStorage.setItem('raffa_asaas_service_name_manual', asaasServiceName.trim());
+
+    const parsedIss = parseIssRate(providerIssRate);
+    if (parsedIss !== null) {
+      localStorage.setItem('raffa_provider_iss_rate', parsedIss.toString());
+      localStorage.setItem('raffa_asaas_iss_rate', parsedIss.toString());
+      setProviderIssRate(formatIssRatePtBr(parsedIss));
+    }
     
-    setAsaasTestStatus({ type: 'info', text: 'Testando conexão através do túnel proxy com a API do Asaas...' });
+    setAsaasTestStatus({ type: 'info', text: 'Testando conexão e sincronizando parâmetros fiscais (Portal Nacional) com a API do Asaas...' });
     try {
       await testAsaasConnection(asaasToken.trim(), asaasEnv);
-      setAsaasTestStatus({ type: 'success', text: '✓ Token do Asaas salvo e validado com sucesso com a API!' });
+      let fiscalSummary = '';
+      try {
+        const fiscalInfo = await fetchAsaasAccountFiscalInfo(asaasToken.trim(), asaasEnv);
+        if (fiscalInfo) {
+          if (!asaasServiceCode.trim() && fiscalInfo.municipalServiceCode) {
+            setAsaasServiceCode(fiscalInfo.municipalServiceCode);
+          }
+          if (!asaasServiceName.trim() && fiscalInfo.municipalServiceName) {
+            setAsaasServiceName(fiscalInfo.municipalServiceName);
+          }
+          const activeCode = asaasServiceCode.trim() || fiscalInfo.municipalServiceCode;
+          if (activeCode) {
+            fiscalSummary = ` Código de serviço detectado: ${activeCode}.`;
+          }
+        }
+      } catch (_) {}
+      setAsaasTestStatus({
+        type: 'success',
+        text: `✓ Integração Asaas e configurações de NFS-e salvas e validadas com sucesso!${fiscalSummary}`
+      });
     } catch (err) {
-      setAsaasTestStatus({ type: 'error', text: `Token salvo, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave informada.` });
+      setAsaasTestStatus({ type: 'error', text: `Configurações salvas, mas a API do Asaas retornou: ${err.message}. Verifique se o ambiente (${asaasEnv === 'production' ? 'Produção' : 'Sandbox'}) corresponde à chave informada.` });
     }
   };
 
@@ -1307,6 +1365,7 @@ function App() {
               entries={entries}
               clients={clients}
               companyInfo={companyInfo}
+              providerIssRate={providerIssRate}
             />
           )}
 
@@ -1466,6 +1525,30 @@ function App() {
                         }}
                         required
                       />
+                    </div>
+
+                    <div className="flex flex-col gap-1 sm:col-span-2 lg:col-span-2">
+                      <label className="font-bold text-gray-800 flex items-center gap-1" htmlFor="comp-provider-iss">
+                        <FileText size={13} className="text-yellow-600" /> Minha Alíquota de ISS — Prestador (%)
+                      </label>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="relative w-full sm:w-48 shrink-0">
+                          <input 
+                            id="comp-provider-iss"
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Ex: 2,643981"
+                            className="w-full border border-yellow-300 rounded-lg p-2.5 pr-7 text-xs font-mono font-bold text-gray-900 focus:outline-none focus:border-yellow-500 bg-yellow-50/40"
+                            value={providerIssRate}
+                            onChange={(e) => handleProviderIssRateChange(e.target.value)}
+                            required
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-500">%</span>
+                        </div>
+                        <span className="text-[11px] text-gray-500 leading-snug">
+                          Atualize mensalmente conforme sua alíquota de prestador (ex: <strong>2,643981</strong>). Aplicada às NFS-e sem retenção; clientes tomadores usam a alíquota do próprio cadastro.
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-end sm:col-span-2 lg:col-span-3 pt-2">
@@ -1777,7 +1860,7 @@ function App() {
                     </select>
                   </div>
 
-                  <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                  <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
                     <div className="flex items-center gap-2">
                       <input 
                         id="asaas-auto-nfe"
@@ -1795,19 +1878,85 @@ function App() {
                     </div>
 
                     {asaasAutoNfe && (
-                      <div className="flex items-center gap-2 pl-6 mt-1">
-                        <label htmlFor="asaas-iss-rate" className="text-xs font-medium text-gray-600">Alíquota padrão de ISS (%):</label>
-                        <input 
-                          id="asaas-iss-rate"
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="100"
-                          className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center font-bold text-gray-900 focus:outline-none focus:border-yellow-500 bg-white"
-                          defaultValue={localStorage.getItem('raffa_asaas_iss_rate') || '2'}
-                          onChange={(e) => localStorage.setItem('raffa_asaas_iss_rate', e.target.value)}
-                        />
-                        <span className="text-[11px] text-gray-400">Padrão: 2% (aplicado quando houver retenção de ISS pelo tomador)</span>
+                      <div className="flex flex-col gap-3 bg-yellow-50/50 border border-yellow-200/80 rounded-xl p-3.5">
+                        <div className="flex flex-col gap-1">
+                          <label htmlFor="asaas-iss-rate" className="text-xs font-bold text-gray-800">
+                            Minha Alíquota de ISS — Prestador (%):
+                          </label>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <input 
+                                id="asaas-iss-rate"
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Ex: 2,643981"
+                                className="w-32 border border-yellow-300 rounded-md px-2.5 py-1.5 text-xs text-center font-mono font-bold text-gray-900 focus:outline-none focus:border-yellow-500 bg-white"
+                                value={providerIssRate}
+                                onChange={(e) => handleProviderIssRateChange(e.target.value)}
+                              />
+                              <span className="text-xs font-bold text-gray-700">%</span>
+                            </div>
+                            <span className="text-[11px] text-gray-600">
+                              Recolhida por você (prestador). Clientes que retêm ISS como tomador usam a alíquota do cadastro do cliente.
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-yellow-200/70 pt-2.5 flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <input
+                              id="asaas-national-portal"
+                              type="checkbox"
+                              checked={asaasNationalPortal}
+                              onChange={(e) => {
+                                setAsaasNationalPortal(e.target.checked);
+                                localStorage.setItem('raffa_asaas_national_portal', e.target.checked.toString());
+                              }}
+                              className="w-4 h-4 text-yellow-500 rounded border-gray-300 focus:ring-yellow-400 cursor-pointer"
+                            />
+                            <label htmlFor="asaas-national-portal" className="text-xs font-bold text-gray-800 cursor-pointer">
+                              Emissão pelo Portal Nacional da NFS-e (Padrão vigente desde 01/11)
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                            <div className="flex flex-col gap-1">
+                              <label htmlFor="asaas-service-code" className="text-[11px] font-semibold text-gray-700">
+                                Código do Serviço / Tributação Nacional (Opcional)
+                              </label>
+                              <input
+                                id="asaas-service-code"
+                                type="text"
+                                placeholder="Auto-detectado da conta Asaas (ex: 170601)"
+                                className="border border-gray-200 rounded-md px-2.5 py-1.5 text-xs font-mono bg-white focus:outline-none focus:border-yellow-500"
+                                value={asaasServiceCode}
+                                onChange={(e) => {
+                                  setAsaasServiceCode(e.target.value);
+                                  localStorage.setItem('raffa_asaas_service_code_manual', e.target.value.trim());
+                                }}
+                              />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <label htmlFor="asaas-service-name" className="text-[11px] font-semibold text-gray-700">
+                                Descrição do Serviço Municipal (Opcional)
+                              </label>
+                              <input
+                                id="asaas-service-name"
+                                type="text"
+                                placeholder="Prestação de Serviços de Marketing"
+                                className="border border-gray-200 rounded-md px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-yellow-500"
+                                value={asaasServiceName}
+                                onChange={(e) => {
+                                  setAsaasServiceName(e.target.value);
+                                  localStorage.setItem('raffa_asaas_service_name_manual', e.target.value.trim());
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-gray-500 leading-relaxed">
+                            No Portal Nacional, o sistema envia <code className="font-mono bg-white px-1 rounded">municipalServiceId: null</code> e puxa automaticamente o código de serviço configurado na sua conta do Asaas (ou utiliza o código informado acima, se preenchido).
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

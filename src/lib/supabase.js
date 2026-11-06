@@ -24,6 +24,53 @@ export const supabase = getSupabaseInstance();
 
 // Database helper functions with automatic LocalStorage fallback checked in App.jsx
 
+// Local cache helper for client fiscal settings (retainIss & issRate) to ensure
+// full 6-decimal persistence even before SQL migration is run on Supabase
+function readClientFiscalCache() {
+  try {
+    const raw = localStorage.getItem('raffa_client_fiscal_v1');
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeClientFiscalCache(client, idOverride = null) {
+  if (!client) return;
+  const cache = readClientFiscalCache();
+  const idKey = idOverride || client.id;
+  const cnpjKey = (client.cnpj || client.cpfCnpj || '').replace(/\D/g, '');
+
+  const hasRetain = client.retainIss !== undefined && client.retainIss !== null;
+  const parsedRate = client.issRate !== undefined && client.issRate !== null && client.issRate !== ''
+    ? Number(String(client.issRate).replace(',', '.'))
+    : null;
+  const validRate = parsedRate !== null && Number.isFinite(parsedRate) ? parsedRate : null;
+
+  if (!hasRetain && validRate === null) return;
+
+  const entry = {
+    retainIss: hasRetain ? Boolean(client.retainIss) : undefined,
+    issRate: validRate
+  };
+
+  if (idKey) cache[`id:${idKey}`] = { ...(cache[`id:${idKey}`] || {}), ...entry };
+  if (cnpjKey) cache[`cnpj:${cnpjKey}`] = { ...(cache[`cnpj:${cnpjKey}`] || {}), ...entry };
+
+  try {
+    localStorage.setItem('raffa_client_fiscal_v1', JSON.stringify(cache));
+  } catch (_) {}
+}
+
+function getClientFiscalFromCache(dbClient) {
+  const cache = readClientFiscalCache();
+  const idKey = dbClient?.id ? `id:${dbClient.id}` : null;
+  const cnpjClean = (dbClient?.cnpj || '').replace(/\D/g, '');
+  const cnpjKey = cnpjClean ? `cnpj:${cnpjClean}` : null;
+
+  return (idKey && cache[idKey]) || (cnpjKey && cache[cnpjKey]) || null;
+}
+
 export async function getClientsDb() {
   const db = getSupabaseInstance();
   if (!db) return null;
@@ -39,25 +86,59 @@ export async function addClientDb(client) {
   const db = getSupabaseInstance();
   if (!db) return null;
   const dbClient = mapClientToDb(client);
-  const { data, error } = await db
-    .from('clients')
-    .insert([dbClient])
-    .select();
-  if (error) throw error;
-  return mapClientFromDb(data[0]);
+  try {
+    const { data, error } = await db
+      .from('clients')
+      .insert([dbClient])
+      .select();
+    if (error) throw error;
+    writeClientFiscalCache(client, data[0]?.id);
+    return mapClientFromDb(data[0]);
+  } catch (err) {
+    if (err.message && (err.message.includes('retain_iss') || err.message.includes('iss_rate') || err.message.includes('column') || err.message.includes('schema cache'))) {
+      const fallbackClient = { ...dbClient };
+      delete fallbackClient.retain_iss;
+      delete fallbackClient.iss_rate;
+      const { data, error } = await db
+        .from('clients')
+        .insert([fallbackClient])
+        .select();
+      if (error) throw error;
+      writeClientFiscalCache(client, data[0]?.id);
+      return mapClientFromDb(data[0]);
+    }
+    throw err;
+  }
 }
 
 export async function updateClientDb(id, client) {
   const db = getSupabaseInstance();
   if (!db) return null;
+  writeClientFiscalCache(client, id);
   const dbClient = mapClientToDb(client);
-  const { data, error } = await db
-    .from('clients')
-    .update(dbClient)
-    .eq('id', id)
-    .select();
-  if (error) throw error;
-  return mapClientFromDb(data[0]);
+  try {
+    const { data, error } = await db
+      .from('clients')
+      .update(dbClient)
+      .eq('id', id)
+      .select();
+    if (error) throw error;
+    return mapClientFromDb(data[0]);
+  } catch (err) {
+    if (err.message && (err.message.includes('retain_iss') || err.message.includes('iss_rate') || err.message.includes('column') || err.message.includes('schema cache'))) {
+      const fallbackClient = { ...dbClient };
+      delete fallbackClient.retain_iss;
+      delete fallbackClient.iss_rate;
+      const { data, error } = await db
+        .from('clients')
+        .update(fallbackClient)
+        .eq('id', id)
+        .select();
+      if (error) throw error;
+      return mapClientFromDb(data[0]);
+    }
+    throw err;
+  }
 }
 
 export async function deleteClientDb(id) {
@@ -186,7 +267,11 @@ function mapEntryFromDb(dbEntry) {
 }
 
 function mapClientToDb(client) {
-  return {
+  const parsedIssRate = client.issRate !== undefined && client.issRate !== null && client.issRate !== ''
+    ? Number(String(client.issRate).replace(',', '.'))
+    : null;
+
+  const payload = {
     name: client.name,
     email: client.email || null,
     additional_email: client.additionalEmail || null,
@@ -199,9 +284,46 @@ function mapClientToDb(client) {
     hourly_rate: client.hourlyRate !== undefined ? parseFloat(client.hourlyRate) : 0,
     is_active: client.isActive !== undefined ? client.isActive : true
   };
+
+  if (client.retainIss !== undefined) {
+    payload.retain_iss = Boolean(client.retainIss);
+  }
+  if (parsedIssRate !== null && Number.isFinite(parsedIssRate)) {
+    payload.iss_rate = parsedIssRate;
+  } else if (client.issRate === null) {
+    payload.iss_rate = null;
+  }
+
+  return payload;
 }
 
 function mapClientFromDb(dbClient) {
+  const cachedFiscal = getClientFiscalFromCache(dbClient);
+  const clientNameLower = (dbClient.name || '').toLowerCase();
+  const isPedroRafael = clientNameLower.includes('pedro') && (clientNameLower.includes('rafael') || clientNameLower.includes('&'));
+
+  let retainIss;
+  if (dbClient.retain_iss !== undefined && dbClient.retain_iss !== null) {
+    retainIss = Boolean(dbClient.retain_iss);
+  } else if (dbClient.retainIss !== undefined && dbClient.retainIss !== null) {
+    retainIss = Boolean(dbClient.retainIss);
+  } else if (cachedFiscal?.retainIss !== undefined) {
+    retainIss = Boolean(cachedFiscal.retainIss);
+  } else {
+    retainIss = isPedroRafael;
+  }
+
+  let issRate = null;
+  const rawDbIss = dbClient.iss_rate !== undefined && dbClient.iss_rate !== null
+    ? dbClient.iss_rate
+    : dbClient.issRate;
+  if (rawDbIss !== undefined && rawDbIss !== null && rawDbIss !== '') {
+    const num = Number(String(rawDbIss).replace(',', '.'));
+    if (Number.isFinite(num)) issRate = num;
+  } else if (cachedFiscal?.issRate !== undefined && cachedFiscal?.issRate !== null) {
+    issRate = cachedFiscal.issRate;
+  }
+
   return {
     id: dbClient.id,
     name: dbClient.name,
@@ -214,7 +336,9 @@ function mapClientFromDb(dbClient) {
     fixedFee: parseFloat(dbClient.fixed_fee !== undefined ? dbClient.fixed_fee : dbClient.fixedFee || 0),
     hoursIncluded: parseFloat(dbClient.hours_included !== undefined ? dbClient.hours_included : dbClient.hoursIncluded || 0),
     hourlyRate: parseFloat(dbClient.hourly_rate !== undefined ? dbClient.hourly_rate : dbClient.hourlyRate || 0),
-    isActive: dbClient.is_active !== undefined ? dbClient.is_active : true
+    isActive: dbClient.is_active !== undefined ? dbClient.is_active : true,
+    retainIss,
+    issRate
   };
 }
 

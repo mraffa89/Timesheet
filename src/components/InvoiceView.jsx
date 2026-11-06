@@ -18,7 +18,7 @@ import {
   FileText,
   RefreshCw
 } from 'lucide-react';
-import { createAsaasBilling, attachDocumentToAsaasPayment, sanitizeFileName, scheduleAsaasInvoiceForPayment } from '../utils/asaasIntegration';
+import { createAsaasBilling, attachDocumentToAsaasPayment, sanitizeFileName, scheduleAsaasInvoiceForPayment, getEffectiveClientIssInfo, formatIssRatePtBr } from '../utils/asaasIntegration';
 import { generateInvoicePdf } from '../utils/pdfGenerator';
 import { formatCpfCnpj, formatPhone } from '../utils/cnpjLookup';
 import { sendDirectEmail, isSmtpConfigured } from '../utils/smtpService';
@@ -58,7 +58,7 @@ const groupEntriesByDescription = (entriesList) => {
   }));
 };
 
-export default function InvoiceView({ entries, clients, companyInfo = {}, emailSubjectTemplate = '', emailBodyTemplate = '' }) {
+export default function InvoiceView({ entries, clients, companyInfo = {}, emailSubjectTemplate = '', emailBodyTemplate = '', providerIssRate = '' }) {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
   const [client, setClient] = useState(null);
@@ -485,9 +485,12 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
       // Feedback amigável
       let nfeMsg = '';
       if (result.invoiceScheduled) {
+        const rateTxt = result.effectiveIssRate !== undefined && result.effectiveIssRate !== null
+          ? ` — Alíquota: ${formatIssRatePtBr(result.effectiveIssRate)}%`
+          : '';
         const issLabel = result.retainIss 
-          ? 'Tomador do ISS (Retenção na fonte por conta do cliente)' 
-          : 'ISS por conta do prestador (Sem retenção)';
+          ? `Tomador do ISS (Retenção na fonte por conta do cliente)${rateTxt}` 
+          : `ISS por conta do prestador (Sem retenção)${rateTxt}`;
         nfeMsg = `\n\n🧾 Nota Fiscal (NFS-e): Programada com sucesso para emissão automática após o pagamento!\n• Enquadramento ISS: ${issLabel}`;
       } else if (result.invoiceMessage) {
         nfeMsg = `\n\nℹ️ ${result.invoiceMessage}`;
@@ -527,7 +530,8 @@ export default function InvoiceView({ entries, clients, companyInfo = {}, emailS
           invoiceId: nfeRes.invoiceId,
           invoiceStatus: nfeRes.invoiceStatus,
           invoiceMessage: nfeRes.invoiceMessage,
-          retainIss: nfeRes.retainIss
+          retainIss: nfeRes.retainIss,
+          effectiveIssRate: nfeRes.effectiveIssRate
         };
         setAsaasBilling(updatedBilling);
         localStorage.setItem(`raffa_asaas_billing_${client.id}_${selectedMonth}`, JSON.stringify(updatedBilling));
@@ -854,11 +858,32 @@ Atenciosamente,
             </div>
           )}
 
-          {client && (
-            <div className="text-xs font-semibold text-gray-500 flex items-center gap-1 sm:pl-3 sm:border-l sm:border-gray-200">
-              Visualizando faturáveis: <span className="text-yellow-600 font-bold">{clientEntries.length} demandas ({financials.billableHours.toFixed(2).replace('.', ',')}h)</span> de {allEntriesCount} lançamentos totais.
-            </div>
-          )}
+          {client && (() => {
+            const activeIssInfo = getEffectiveClientIssInfo(client, providerIssRate || undefined);
+            return (
+              <div className="flex flex-wrap items-center gap-2 sm:pl-3 sm:border-l sm:border-gray-200">
+                <div className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                  Visualizando faturáveis: <span className="text-yellow-600 font-bold">{clientEntries.length} demandas ({financials.billableHours.toFixed(2).replace('.', ',')}h)</span> de {allEntriesCount} lançamentos totais.
+                </div>
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    activeIssInfo.retainIss
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-gray-100 text-gray-700 border-gray-200'
+                  }`}
+                  title={
+                    activeIssInfo.retainIss
+                      ? 'ISS retido pelo cliente (Tomador) — alíquota definida no cadastro do cliente'
+                      : 'ISS recolhido por você (Prestador) — alíquota mensal definida em Configurações'
+                  }
+                >
+                  {activeIssInfo.retainIss
+                    ? `ISS Tomador (Retido): ${formatIssRatePtBr(activeIssInfo.effectiveIssRate)}%`
+                    : `ISS Prestador: ${formatIssRatePtBr(activeIssInfo.effectiveIssRate)}%`}
+                </span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

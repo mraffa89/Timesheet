@@ -22,6 +22,8 @@ ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS additional_email TEXT;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS retain_iss BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS iss_rate NUMERIC(10, 6);
 
 -- 2. Criar tabela de lançamentos de tempo (timesheet)
 CREATE TABLE IF NOT EXISTS public.entries (
